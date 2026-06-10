@@ -1,0 +1,41 @@
+# Go
+api/bin/
+api/ai-worker-platform
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+workers/.venv/
+*.egg-info/
+dist/
+.ruff_cache/
+
+# Node / Dashboard
+dashboard/node_modules/
+dashboard/dist/
+dashboard/.vite/
+
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+.vscode/
+*.swp
