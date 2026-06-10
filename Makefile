@@ -7,7 +7,7 @@ MIGRATE_BIN ?= migrate
 
 .DEFAULT_GOAL := help
 
-.PHONY: help build test lint deploy migrate-up migrate-down verify-infra
+.PHONY: help build test lint deploy migrate-up migrate-down verify-infra verify-environment
 
 ## help: list all targets with descriptions
 help:
@@ -63,3 +63,7 @@ endif
 ## verify-infra: run full infra health check
 verify-infra:
 	@bash deploy/verify-infra.sh
+
+## verify-environment: pre-flight check before starting a phase (tooling, Tailscale, Docker, GPU, PostgreSQL)
+verify-environment:
+	@bash scripts/verify-environment.sh
