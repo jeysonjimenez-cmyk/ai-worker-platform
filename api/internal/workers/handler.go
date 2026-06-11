@@ -3,6 +3,7 @@ package workers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -151,6 +152,37 @@ func (h *Handler) claimWithWait(ctx context.Context, workerID string, waitSec in
 		}
 	}
 	return nil, nil
+}
+
+type metricsRequest struct {
+	Samples []MetricSample `json:"samples"`
+}
+
+func (h *Handler) IngestMetrics(w http.ResponseWriter, r *http.Request) {
+	workerID := auth.GetWorkerID(r)
+	pathID := r.PathValue("id")
+	if workerID != pathID {
+		writeError(w, http.StatusForbidden, "worker id mismatch")
+		return
+	}
+
+	var req metricsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "invalid json: "+err.Error())
+		return
+	}
+	for i, s := range req.Samples {
+		if s.RecordedAt.IsZero() {
+			writeError(w, http.StatusUnprocessableEntity, fmt.Sprintf("samples[%d]: recorded_at is required", i))
+			return
+		}
+	}
+
+	if err := IngestMetrics(r.Context(), h.pool, workerID, req.Samples); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"inserted": len(req.Samples)})
 }
 
 func (h *Handler) UnloadModel(w http.ResponseWriter, r *http.Request) {

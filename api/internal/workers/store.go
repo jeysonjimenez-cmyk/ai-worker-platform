@@ -261,6 +261,47 @@ func ReleaseModelVRAM(ctx context.Context, pool *pgxpool.Pool, workerID string) 
 	return tx.Commit(ctx)
 }
 
+type MetricSample struct {
+	GPUUtilPct   *int     `json:"gpu_util_pct"`
+	VRAMTotalMB  *int     `json:"vram_total_mb"`
+	VRAMUsedMB   *int     `json:"vram_used_mb"`
+	VRAMFreeMB   *int     `json:"vram_free_mb"`
+	TemperatureC *int     `json:"temperature_c"`
+	PowerW       *int     `json:"power_w"`
+	CPUPct       *int     `json:"cpu_pct"`
+	RAMUsedGB    *float64 `json:"ram_used_gb"`
+	RecordedAt   time.Time `json:"recorded_at"`
+}
+
+// IngestMetrics writes a batch of metric samples for a worker.
+// recorded_at comes from the client (capture time), not the server clock.
+func IngestMetrics(ctx context.Context, pool *pgxpool.Pool, workerID string, samples []MetricSample) error {
+	if len(samples) == 0 {
+		return nil
+	}
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	for _, s := range samples {
+		_, err := tx.Exec(ctx, `
+			INSERT INTO worker_metrics
+				(worker_id, gpu_util_pct, vram_total_mb, vram_used_mb, vram_free_mb,
+				 temperature_c, power_w, cpu_pct, ram_used_gb, recorded_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+			workerID,
+			s.GPUUtilPct, s.VRAMTotalMB, s.VRAMUsedMB, s.VRAMFreeMB,
+			s.TemperatureC, s.PowerW, s.CPUPct, s.RAMUsedGB, s.RecordedAt,
+		)
+		if err != nil {
+			return fmt.Errorf("insert metric: %w", err)
+		}
+	}
+	return tx.Commit(ctx)
+}
+
 // TimedOutWorkers returns worker IDs whose last_heartbeat is older than timeout.
 func TimedOutWorkers(ctx context.Context, pool *pgxpool.Pool, timeout time.Duration) ([]string, error) {
 	rows, err := pool.Query(ctx, `

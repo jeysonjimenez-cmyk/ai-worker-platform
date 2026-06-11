@@ -63,6 +63,7 @@ func main() {
 	mux.Handle("POST /workers/{id}/heartbeat", workerMW(workersHandler.Heartbeat))
 	mux.Handle("POST /workers/{id}/claim", workerMW(workersHandler.Claim))
 	mux.Handle("POST /workers/{id}/unload-model", workerMW(workersHandler.UnloadModel))
+	mux.Handle("POST /workers/{id}/metrics", workerMW(workersHandler.IngestMetrics))
 	mux.Handle("PATCH /ai/jobs/{id}/progress", workerMW(jobsHandler.UpdateProgress))
 	mux.Handle("PATCH /ai/jobs/{id}/complete", workerMW(jobsHandler.Complete))
 

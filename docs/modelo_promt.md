@@ -37,7 +37,7 @@ ten en cuenta las RETROSPECTIVES, son tips de cosas que hemos analizado, valida 
 --------------------------------------
 
 
-Implementa T2.2.
+Implementa T2.3.
 
 Contexto:
 - Arquitectura congelada.

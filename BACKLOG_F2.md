@@ -51,18 +51,18 @@
 
 ---
 
-## T2.3 — Endpoint de ingesta de métricas en la API
+## T2.3 — Endpoint de ingesta de métricas en la API ✅ 2026-06-10
 
 **Tipo:** Desarrollo · **Esfuerzo:** 4 h · **Dependencias:** T2.1
 
 **Descripción:** Endpoint en la API Go para que el Node Agent reporte métricas (GPU util, VRAM total/usada/libre, temperatura, watts, CPU, RAM), autenticado con API key de worker (middleware existente de F1). Escribe en `worker_metrics`. Acepta lotes (array de muestras) para soportar el buffer de reintentos del agente (T2.7): cada muestra lleva su timestamp de captura, no el de llegada.
 
 **Criterios de aceptación:**
-- [ ] Un POST válido inserta filas en `worker_metrics` con todos los campos y el timestamp de captura.
-- [ ] Un lote de N muestras acumuladas inserta N filas.
-- [ ] Sin API key o con key de app → 401/403 (mismo contrato que el resto de endpoints de worker).
-- [ ] Payload con campos faltantes o tipos inválidos → 422.
-- [ ] Tests de integración contra PostgreSQL real (mismo patrón testcontainers de F1).
+- [x] Un POST válido inserta filas en `worker_metrics` con todos los campos y el timestamp de captura.
+- [x] Un lote de N muestras acumuladas inserta N filas.
+- [x] Sin API key o con key de app → 401/403 (mismo contrato que el resto de endpoints de worker).
+- [x] Payload con campos faltantes o tipos inválidos → 422.
+- [x] Tests de integración contra PostgreSQL real (mismo patrón testcontainers de F1).
 
 **Resultado esperado:** La API puede recibir y persistir métricas reales o acumuladas, con autenticación y validación.
 

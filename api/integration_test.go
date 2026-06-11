@@ -186,6 +186,7 @@ func buildServer(t *testing.T, pool *pgxpool.Pool) *httptest.Server {
 	mux.Handle("POST /workers/{id}/heartbeat", workerMW(workersHandler.Heartbeat))
 	mux.Handle("POST /workers/{id}/claim", workerMW(workersHandler.Claim))
 	mux.Handle("POST /workers/{id}/unload-model", workerMW(workersHandler.UnloadModel))
+	mux.Handle("POST /workers/{id}/metrics", workerMW(workersHandler.IngestMetrics))
 	mux.Handle("PATCH /ai/jobs/{id}/progress", workerMW(jobsHandler.UpdateProgress))
 	mux.Handle("PATCH /ai/jobs/{id}/complete", workerMW(jobsHandler.Complete))
 
@@ -916,5 +917,209 @@ func TestEndToEndLifecycle(t *testing.T) {
 	}
 	if fj["result"] == nil {
 		t.Error("expected result to be set")
+	}
+}
+
+// ─── T2.3 metrics ingestion ───
+
+func TestIngestMetrics_Single(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	srv := buildServer(t, pool)
+	defer srv.Close()
+
+	registerWorker(t, srv, "w-met", "wk-met", map[string]any{"services": []string{"llm_chat"}, "cuda": true, "vram_total_mb": 16000})
+
+	capturedAt := time.Now().UTC().Truncate(time.Second)
+	gpuUtil := 42
+	vramTotal := 16000
+	vramUsed := 8000
+	vramFree := 8000
+	temp := 72
+	power := 150
+	cpuPct := 30
+	ramGB := 12.5
+
+	resp := post(t, srv, "/workers/w-met/metrics", "X-Worker-Key", "wk-met", map[string]any{
+		"samples": []map[string]any{{
+			"gpu_util_pct":  gpuUtil,
+			"vram_total_mb": vramTotal,
+			"vram_used_mb":  vramUsed,
+			"vram_free_mb":  vramFree,
+			"temperature_c": temp,
+			"power_w":       power,
+			"cpu_pct":       cpuPct,
+			"ram_used_gb":   ramGB,
+			"recorded_at":   capturedAt.Format(time.RFC3339),
+		}},
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	var body map[string]any
+	json.NewDecoder(resp.Body).Decode(&body)
+	resp.Body.Close()
+	if body["inserted"] != float64(1) {
+		t.Errorf("expected inserted=1, got %v", body["inserted"])
+	}
+
+	// Verify row in DB with correct capture timestamp and all fields.
+	var row struct {
+		GPUUtil      int
+		VRAMTotal    int
+		VRAMUsed     int
+		VRAMFree     int
+		Temp         int
+		Power        int
+		CPU          int
+		RAM          float64
+		RecordedAt   time.Time
+	}
+	err := pool.QueryRow(context.Background(), `
+		SELECT gpu_util_pct, vram_total_mb, vram_used_mb, vram_free_mb,
+		       temperature_c, power_w, cpu_pct, ram_used_gb, recorded_at
+		FROM worker_metrics WHERE worker_id = 'w-met'`,
+	).Scan(&row.GPUUtil, &row.VRAMTotal, &row.VRAMUsed, &row.VRAMFree,
+		&row.Temp, &row.Power, &row.CPU, &row.RAM, &row.RecordedAt)
+	if err != nil {
+		t.Fatalf("query metric row: %v", err)
+	}
+	if row.GPUUtil != gpuUtil {
+		t.Errorf("gpu_util_pct: expected %d, got %d", gpuUtil, row.GPUUtil)
+	}
+	if row.VRAMTotal != vramTotal {
+		t.Errorf("vram_total_mb: expected %d, got %d", vramTotal, row.VRAMTotal)
+	}
+	if row.VRAMFree != vramFree {
+		t.Errorf("vram_free_mb: expected %d, got %d", vramFree, row.VRAMFree)
+	}
+	// recorded_at must be the capture time, not server time.
+	if !row.RecordedAt.Equal(capturedAt) {
+		t.Errorf("recorded_at: expected %v, got %v", capturedAt, row.RecordedAt)
+	}
+}
+
+func TestIngestMetrics_Batch(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	srv := buildServer(t, pool)
+	defer srv.Close()
+
+	registerWorker(t, srv, "w-batch", "wk-batch", map[string]any{"services": []string{"llm_chat"}, "cuda": false, "vram_total_mb": 0})
+
+	const n = 5
+	samples := make([]map[string]any, n)
+	base := time.Now().UTC().Add(-time.Duration(n) * 10 * time.Second)
+	for i := range n {
+		samples[i] = map[string]any{
+			"cpu_pct":     i * 10,
+			"ram_used_gb": float64(i),
+			"recorded_at": base.Add(time.Duration(i) * 10 * time.Second).Format(time.RFC3339),
+		}
+	}
+
+	resp := post(t, srv, "/workers/w-batch/metrics", "X-Worker-Key", "wk-batch", map[string]any{"samples": samples})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	var body map[string]any
+	json.NewDecoder(resp.Body).Decode(&body)
+	resp.Body.Close()
+	if body["inserted"] != float64(n) {
+		t.Errorf("expected inserted=%d, got %v", n, body["inserted"])
+	}
+
+	var count int
+	pool.QueryRow(context.Background(), `SELECT count(*) FROM worker_metrics WHERE worker_id = 'w-batch'`).Scan(&count)
+	if count != n {
+		t.Errorf("expected %d rows in worker_metrics, got %d", n, count)
+	}
+}
+
+func TestIngestMetrics_MissingRecordedAt(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	srv := buildServer(t, pool)
+	defer srv.Close()
+
+	registerWorker(t, srv, "w-notime", "wk-notime", map[string]any{"services": []string{"llm_chat"}, "cuda": false, "vram_total_mb": 0})
+
+	resp := post(t, srv, "/workers/w-notime/metrics", "X-Worker-Key", "wk-notime", map[string]any{
+		"samples": []map[string]any{{"cpu_pct": 10}},
+	})
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("expected 422, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+}
+
+func TestIngestMetrics_WrongWorker(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	srv := buildServer(t, pool)
+	defer srv.Close()
+
+	registerWorker(t, srv, "w-own", "wk-own", map[string]any{"services": []string{"llm_chat"}, "cuda": false, "vram_total_mb": 0})
+	registerWorker(t, srv, "w-other", "wk-other", map[string]any{"services": []string{"llm_chat"}, "cuda": false, "vram_total_mb": 0})
+
+	// w-other tries to post metrics for w-own's path.
+	resp := post(t, srv, "/workers/w-own/metrics", "X-Worker-Key", "wk-other", map[string]any{
+		"samples": []map[string]any{{"cpu_pct": 10, "recorded_at": time.Now().UTC().Format(time.RFC3339)}},
+	})
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+}
+
+func TestIngestMetrics_NoWorkerKey(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	srv := buildServer(t, pool)
+	defer srv.Close()
+
+	// No key at all → 401.
+	req, _ := http.NewRequest("POST", srv.URL+"/workers/w-any/metrics",
+		strings.NewReader(`{"samples":[]}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp, _ := http.DefaultClient.Do(req)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	// App key on a worker endpoint → 401 (X-Worker-Key header absent).
+	resp2 := post(t, srv, "/workers/w-any/metrics", "X-App-Key", appKey, map[string]any{"samples": []any{}})
+	if resp2.StatusCode != http.StatusUnauthorized {
+		t.Errorf("expected 401 for app key on worker endpoint, got %d", resp2.StatusCode)
+	}
+	resp2.Body.Close()
+}
+
+func TestIngestMetrics_NoGPUFields(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	srv := buildServer(t, pool)
+	defer srv.Close()
+
+	// Node without GPU: only CPU/RAM fields, GPU fields absent (null in DB).
+	registerWorker(t, srv, "w-nogpu", "wk-nogpu", map[string]any{"services": []string{"llm_chat"}, "cuda": false, "vram_total_mb": 0})
+
+	resp := post(t, srv, "/workers/w-nogpu/metrics", "X-Worker-Key", "wk-nogpu", map[string]any{
+		"samples": []map[string]any{{
+			"cpu_pct":     55,
+			"ram_used_gb": 8.0,
+			"recorded_at": time.Now().UTC().Format(time.RFC3339),
+		}},
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	var gpuUtil *int
+	pool.QueryRow(context.Background(), `SELECT gpu_util_pct FROM worker_metrics WHERE worker_id = 'w-nogpu'`).Scan(&gpuUtil)
+	if gpuUtil != nil {
+		t.Errorf("expected gpu_util_pct to be NULL, got %v", *gpuUtil)
 	}
 }
