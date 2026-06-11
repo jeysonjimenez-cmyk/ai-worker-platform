@@ -100,4 +100,6 @@ Estado al 2026-06-11:
 - T2.2 ✅ Borrar `ClaimResult`
 - T2.3 ✅ Endpoint de ingesta de métricas
 - T2.4 ✅ Scaffold agente + colección pynvml/psutil
-- T2.5 → pendiente (endpoint `/metrics` local)
+- T2.5 ✅ Endpoint local `/metrics` (MetricsServer, bind explícito)
+- T2.6 ✅ Registro del nodo y GPU(s) al arrancar
+- T2.7 → pendiente (loop de reporte + buffer)
