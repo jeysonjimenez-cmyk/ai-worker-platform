@@ -68,17 +68,17 @@
 
 ---
 
-## T2.4 — Scaffold del Node Agent + lectura de métricas (pynvml + psutil)
+## T2.4 — Scaffold del Node Agent + lectura de métricas (pynvml + psutil) ✅ 2026-06-11
 
 **Tipo:** Desarrollo · **Esfuerzo:** 4 h · **Dependencias:** Ninguna (paralelizable con T2.3)
 
 **Descripción:** Crear `agent/` con proyecto Python 3.12 + uv (lock de dependencias, regla 9 del plan: versiones congeladas). Módulo de colección: pynvml para GPU util, VRAM total/usada/libre, temperatura y watts; psutil para CPU y RAM. Salida como dict tipado listo para serializar. Configuración por variables de entorno (URL de la API, API key, intervalo). Integrar lint/tests del agente en la CI existente.
 
 **Criterios de aceptación:**
-- [ ] Una invocación de la colección devuelve todos los campos con tipos correctos.
-- [ ] Test unitario del parser/normalizador de métricas con valores pynvml simulados (única parte testeable sin GPU, según la estrategia del plan).
-- [ ] En ialab, los valores coinciden con `nvidia-smi` (±margen razonable).
-- [ ] CI ejecuta lint + tests del agente.
+- [x] Una invocación de la colección devuelve todos los campos con tipos correctos.
+- [x] Test unitario del parser/normalizador de métricas con valores pynvml simulados (única parte testeable sin GPU, según la estrategia del plan).
+- [ ] En ialab, los valores coinciden con `nvidia-smi` (±margen razonable). ← verificación manual en hardware real
+- [x] CI ejecuta lint + tests del agente.
 
 **Resultado esperado:** Paquete `agent/` que lee métricas reales del hardware, testeado en lo testeable y cubierto por CI.
 
