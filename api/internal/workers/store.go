@@ -111,10 +111,6 @@ func Heartbeat(ctx context.Context, pool *pgxpool.Pool, workerID string) error {
 	return nil
 }
 
-type ClaimResult struct {
-	Job *jobs.Job
-}
-
 // Claim attempts to assign the highest-priority eligible pending job to the worker.
 // Returns nil job if no eligible job is available.
 func Claim(ctx context.Context, pool *pgxpool.Pool, workerID string, vramMarginMB int) (*jobs.Job, error) {

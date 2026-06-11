@@ -37,15 +37,15 @@
 
 ---
 
-## T2.2 — Limpieza: borrar `ClaimResult` (retro F1 #4)
+## T2.2 — Limpieza: borrar `ClaimResult` (retro F1 #4) ✅ 2026-06-10
 
 **Tipo:** Desarrollo · **Esfuerzo:** 1 h (incluye verificación) · **Dependencias:** Ninguna
 
 **Descripción:** Eliminar el tipo `ClaimResult` de `workers/store.go` (declarado, nunca usado). Sin ningún otro cambio en el archivo.
 
 **Criterios de aceptación:**
-- [ ] El tipo no existe; `go build ./...` y `go test ./...` pasan.
-- [ ] El diff toca únicamente esas líneas.
+- [x] El tipo no existe; `go build ./...` y `go test ./...` pasan.
+- [x] El diff toca únicamente esas líneas.
 
 **Resultado esperado:** Código muerto fuera del camino de lectura antes de que F2/F3 vuelvan a tocar ese archivo.
 
