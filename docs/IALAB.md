@@ -51,6 +51,34 @@ nvidia-smi
 docker run --rm --gpus all nvidia/cuda:12.8.0-base-ubuntu24.04 nvidia-smi
 ```
 
+## Instalación del Node Agent (desde cero)
+
+Ejecutar en ialab desde la raíz del repo (clonar o copiar primero si es la primera vez):
+
+```bash
+# 1. Clonar/actualizar el repo en ialab
+git clone <repo_url> ~/ai-worker-platform   # primera vez
+# o: cd ~/ai-worker-platform && git pull
+
+# 2. Ejecutar el instalador (idempotente — seguro de volver a correr para actualizar)
+bash deploy/ialab/install-agent.sh
+```
+
+El script:
+- Copia `agent/` a `/opt/ai-platform/agent`
+- Sincroniza dependencias Python con `uv sync --frozen`
+- Crea `/etc/ai-platform/agent.env` desde la plantilla **solo si no existe** (las credenciales reales sobreviven re-instalaciones)
+- Instala y habilita `node-agent.service` en systemd
+
+**Primera instalación:** editar el archivo de entorno antes de iniciar el servicio:
+
+```bash
+sudo $EDITOR /etc/ai-platform/agent.env   # rellenar AGENT_API_KEY, AGENT_ADMIN_KEY, etc.
+sudo systemctl restart node-agent
+```
+
+Ver plantilla de variables: `deploy/ialab/agent.env.example`
+
 ## Regla de acceso
 
 ialab **nunca** se accede desde internet directamente. Todo pasa por Tailscale.

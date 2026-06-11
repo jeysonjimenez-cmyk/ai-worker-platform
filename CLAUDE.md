@@ -103,3 +103,5 @@ Estado al 2026-06-11:
 - T2.5 ✅ Endpoint local `/metrics` (MetricsServer, bind explícito)
 - T2.6 ✅ Registro del nodo y GPU(s) al arrancar
 - T2.7 ✅ Loop de reporte + buffer
+- T2.8 ✅ Unidad systemd
+- T2.9 ✅ Script de instalación + documentación en IALAB.md
