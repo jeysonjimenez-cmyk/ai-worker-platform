@@ -1,6 +1,6 @@
 # AI Worker Platform — Plan de implementación
 
-> Última actualización: 2026-06-09 · v1.1 · Basado en DESIGN.md v1.4 (arquitectura congelada)
+> Última actualización: 2026-06-10 · v1.2 · Basado en DESIGN.md v1.4 (arquitectura congelada)
 >
 > Cambios v1.1: Video Crack se integra de forma incremental (cada servicio se adopta apenas existe, en doble ejecución) en lugar de migrar todo al final; SDK mínimo como parte de la primera integración; Dashboard v1 recortado a lo operativo esencial.
 
@@ -24,7 +24,7 @@ F0 Fundaciones → F1 API+DB → F2 Node Agent → F3 Worker scaffold → F4 Whi
 
 ---
 
-## Fase 0 — Fundaciones e infraestructura
+## Fase 0 — Fundaciones e infraestructura ✅ completada 2026-06-09
 
 **Duración:** 3–5 días · **Complejidad: Baja**
 
@@ -62,7 +62,7 @@ Verificación manual con checklist + script `verify-infra.sh` que prueba conecti
 
 ---
 
-## Fase 1 — Schema PostgreSQL + API Go (núcleo)
+## Fase 1 — Schema PostgreSQL + API Go (núcleo) ✅ completada 2026-06-10
 
 **Duración:** 2 semanas · **Complejidad: Alta** (es el contrato de todo el sistema)
 

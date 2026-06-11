@@ -6,7 +6,7 @@ on:
 
 jobs:
   api:
-    name: Go build & vet
+    name: Go build, vet & integration tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,6 +16,8 @@ jobs:
           cache-dependency-path: api/go.sum
       - run: cd api && go build ./...
       - run: cd api && go vet ./...
+      - name: Integration tests (testcontainers spins up Postgres)
+        run: cd api && go test -v -timeout 120s ./...
 
   workers:
     name: Python lint (ruff)
