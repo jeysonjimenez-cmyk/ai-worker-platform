@@ -390,6 +390,56 @@ func TestWorkerHeartbeat_NotFound(t *testing.T) {
 	resp.Body.Close()
 }
 
+func TestWorkerRegister_ExplicitGPUID(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	srv := buildServer(t, pool)
+	defer srv.Close()
+
+	gpuID := "ialab/rtx4070ti"
+	resp := post(t, srv, "/workers/register", "X-Admin-Key", adminKey, map[string]any{
+		"id": "w-gpu-explicit", "hostname": "ialab",
+		"capabilities": map[string]any{"services": []string{"transcription"}, "cuda": true, "vram_total_mb": 16000},
+		"api_key": "wk-gpu-explicit",
+		"gpu_id":  gpuID,
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("register: expected 200, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	// gpu row must use the explicit id, not the derived "ialab/gpu-0".
+	var storedID string
+	pool.QueryRow(context.Background(), `SELECT gpu_id FROM workers WHERE id = 'w-gpu-explicit'`).Scan(&storedID)
+	if storedID != gpuID {
+		t.Errorf("expected gpu_id=%q, got %q", gpuID, storedID)
+	}
+	var gpuCount int
+	pool.QueryRow(context.Background(), `SELECT count(*) FROM gpus WHERE id = $1`, gpuID).Scan(&gpuCount)
+	if gpuCount != 1 {
+		t.Errorf("expected 1 gpu row with id %q, got %d", gpuID, gpuCount)
+	}
+
+	// Re-register idempotent — vram_reserved_mb must not reset.
+	pool.Exec(context.Background(), `UPDATE gpus SET vram_reserved_mb = 4000 WHERE id = $1`, gpuID)
+	resp2 := post(t, srv, "/workers/register", "X-Admin-Key", adminKey, map[string]any{
+		"id": "w-gpu-explicit", "hostname": "ialab",
+		"capabilities": map[string]any{"services": []string{"transcription"}, "cuda": true, "vram_total_mb": 16000},
+		"api_key": "wk-gpu-explicit",
+		"gpu_id":  gpuID,
+	})
+	if resp2.StatusCode != http.StatusOK {
+		t.Fatalf("re-register: expected 200, got %d", resp2.StatusCode)
+	}
+	resp2.Body.Close()
+
+	var reserved int
+	pool.QueryRow(context.Background(), `SELECT vram_reserved_mb FROM gpus WHERE id = $1`, gpuID).Scan(&reserved)
+	if reserved != 4000 {
+		t.Errorf("re-register must not reset vram_reserved_mb: expected 4000, got %d", reserved)
+	}
+}
+
 // ─── T1.6 claim: SKIP LOCKED + VRAM reservation ───
 
 func TestClaim_BasicFlow(t *testing.T) {

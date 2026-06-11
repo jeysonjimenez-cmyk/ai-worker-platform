@@ -29,6 +29,7 @@ type RegisterParams struct {
 	Hostname     string
 	Capabilities json.RawMessage
 	APIKey       string
+	GPUID        *string // explicit gpu_id from client; falls back to hostname+"/gpu-0" if nil
 }
 
 type capabilities struct {
@@ -50,7 +51,12 @@ func Register(ctx context.Context, pool *pgxpool.Pool, p RegisterParams) (*Worke
 	// Upsert GPU row if worker has a GPU.
 	var gpuID *string
 	if caps.CUDA && caps.VRAMTotalMB > 0 {
-		id := p.Hostname + "/gpu-0"
+		var id string
+		if p.GPUID != nil && *p.GPUID != "" {
+			id = *p.GPUID
+		} else {
+			id = p.Hostname + "/gpu-0"
+		}
 		gpuID = &id
 		_, err = tx.Exec(ctx, `
 			INSERT INTO gpus (id, hostname, vram_total_mb)

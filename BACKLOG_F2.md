@@ -1,0 +1,246 @@
+# Backlog — Fase 2: Node Agent
+
+> Fuente única: IMPLEMENTATION_PLAN.md v1.2, Fase 2 · Duración estimada: ~1 semana
+> Arquitectura congelada (DESIGN.md v1.4): no introducir componentes ni endpoints fuera de esta lista.
+> Orden cronológico de ejecución. Tareas de 1–4 h.
+>
+> **Decisión de implementación:** Node Agent en **Python + pynvml + psutil** (primera opción del plan; los workers de F3 ya serán Python). Corre fuera de Docker, bajo systemd, en ialab.
+
+---
+
+## Retrospectiva F1 — qué se incorpora a esta fase
+
+| Item retro | ¿Ahora? | Justificación |
+|---|---|---|
+| #5 `gpu_id` hardcodeado (`hostname + "/gpu-0"`) | **Sí → T2.1** | F2 es cuando el agente empieza a registrar GPUs reales en la tabla `gpus`. Hacerlo después implica migrar datos de producción. La propia retro pide hacerlo antes del primer deploy real. |
+| #4 `ClaimResult` código muerto | **Sí → T2.2** | Borrar 3 líneas, costo cero, "cualquier momento" según la retro. |
+| #1 Extraer `Claim` a `internal/scheduler/` | **No** | La condición de la retro era "cuando F2 toque `Claim` para el filtro de `vram_free_mb`". El alcance de F2 en el plan **no toca el claim**: la deriva ledger↔realidad es solo un log warning (T2.10). Se re-evalúa en F3 (`max_concurrency`). |
+| #2 `serviceRequirements` en el handler | **No** | Sin relación con F2; oportunista cuando se agregue un servicio nuevo (F6/F7). |
+| #3 `Cancel` con GET extra | **No** | Sin relación con F2; refactor oportunista. |
+| #6 `vram_released` en `jobs` | **No** | La retro dice explícitamente: observar en F5 (dashboard). |
+
+---
+
+## T2.1 — `gpu_id` explícito en el registro de workers (retro F1 #5) ✅ 2026-06-10
+
+**Tipo:** Desarrollo · **Esfuerzo:** 2 h · **Dependencias:** Fase 1 completada
+
+**Descripción:** Cambiar `RegisterParams` para que el cliente declare su `gpu_id` en el payload de registro, en lugar de que el servidor lo derive como `hostname + "/gpu-0"`. Mantener el derivado como default si el campo no viene (compatibilidad con el worker simulado de F1, que también se actualiza). Es prerequisito de T2.6: el agente registrará la(s) GPU(s) con id explícito.
+
+**Criterios de aceptación:**
+- [x] Un registro con `gpu_id` explícito crea/actualiza esa fila en `gpus` con ese id exacto.
+- [x] Registro sin `gpu_id` conserva el comportamiento actual (sin romper tests de F1).
+- [x] El worker simulado de F1 declara su `gpu_id` explícitamente.
+- [x] `go test ./...` pasa.
+
+**Resultado esperado:** La convención de identidad de GPU la define el cliente que la conoce, antes de que existan datos reales en producción.
+
+---
+
+## T2.2 — Limpieza: borrar `ClaimResult` (retro F1 #4)
+
+**Tipo:** Desarrollo · **Esfuerzo:** 1 h (incluye verificación) · **Dependencias:** Ninguna
+
+**Descripción:** Eliminar el tipo `ClaimResult` de `workers/store.go` (declarado, nunca usado). Sin ningún otro cambio en el archivo.
+
+**Criterios de aceptación:**
+- [ ] El tipo no existe; `go build ./...` y `go test ./...` pasan.
+- [ ] El diff toca únicamente esas líneas.
+
+**Resultado esperado:** Código muerto fuera del camino de lectura antes de que F2/F3 vuelvan a tocar ese archivo.
+
+---
+
+## T2.3 — Endpoint de ingesta de métricas en la API
+
+**Tipo:** Desarrollo · **Esfuerzo:** 4 h · **Dependencias:** T2.1
+
+**Descripción:** Endpoint en la API Go para que el Node Agent reporte métricas (GPU util, VRAM total/usada/libre, temperatura, watts, CPU, RAM), autenticado con API key de worker (middleware existente de F1). Escribe en `worker_metrics`. Acepta lotes (array de muestras) para soportar el buffer de reintentos del agente (T2.7): cada muestra lleva su timestamp de captura, no el de llegada.
+
+**Criterios de aceptación:**
+- [ ] Un POST válido inserta filas en `worker_metrics` con todos los campos y el timestamp de captura.
+- [ ] Un lote de N muestras acumuladas inserta N filas.
+- [ ] Sin API key o con key de app → 401/403 (mismo contrato que el resto de endpoints de worker).
+- [ ] Payload con campos faltantes o tipos inválidos → 422.
+- [ ] Tests de integración contra PostgreSQL real (mismo patrón testcontainers de F1).
+
+**Resultado esperado:** La API puede recibir y persistir métricas reales o acumuladas, con autenticación y validación.
+
+---
+
+## T2.4 — Scaffold del Node Agent + lectura de métricas (pynvml + psutil)
+
+**Tipo:** Desarrollo · **Esfuerzo:** 4 h · **Dependencias:** Ninguna (paralelizable con T2.3)
+
+**Descripción:** Crear `agent/` con proyecto Python 3.12 + uv (lock de dependencias, regla 9 del plan: versiones congeladas). Módulo de colección: pynvml para GPU util, VRAM total/usada/libre, temperatura y watts; psutil para CPU y RAM. Salida como dict tipado listo para serializar. Configuración por variables de entorno (URL de la API, API key, intervalo). Integrar lint/tests del agente en la CI existente.
+
+**Criterios de aceptación:**
+- [ ] Una invocación de la colección devuelve todos los campos con tipos correctos.
+- [ ] Test unitario del parser/normalizador de métricas con valores pynvml simulados (única parte testeable sin GPU, según la estrategia del plan).
+- [ ] En ialab, los valores coinciden con `nvidia-smi` (±margen razonable).
+- [ ] CI ejecuta lint + tests del agente.
+
+**Resultado esperado:** Paquete `agent/` que lee métricas reales del hardware, testeado en lo testeable y cubierto por CI.
+
+---
+
+## T2.5 — Endpoint local `/metrics` del agente
+
+**Tipo:** Desarrollo · **Esfuerzo:** 2 h · **Dependencias:** T2.4
+
+**Descripción:** Servidor HTTP mínimo en el agente que expone la última muestra de métricas en `/metrics` (JSON), consultable por los workers del mismo nodo. La dirección de bind es **explícita y configurable** por variable de entorno (ej. `AGENT_METRICS_BIND`), con la **IP de Tailscale del nodo** como valor operativo — nunca `0.0.0.0`. Nota: `127.0.0.1` solo no sirve: el VPS consulta vía Tailscale y los workers de F3 correrán en Docker (desde un contenedor, localhost no es el host).
+
+**Criterios de aceptación:**
+- [ ] `ss -tlnp` en ialab muestra el proceso escuchando únicamente en la IP configurada, no en `0.0.0.0` ni `::`.
+- [ ] Sin la variable configurada, el agente falla al arrancar con error claro (no hay default silencioso a `0.0.0.0`).
+- [ ] `curl http://<ialab>:PUERTO/metrics` desde el VPS (vía Tailscale) devuelve la última muestra.
+- [ ] El endpoint no es alcanzable desde internet público (verificación manual, mismo checklist de F0).
+- [ ] La respuesta incluye el timestamp de la muestra (para detectar datos viejos).
+
+**Resultado esperado:** Los workers (F3+) pueden consultar el estado del nodo localmente sin pasar por el VPS.
+
+---
+
+## T2.6 — Registro del nodo y de la(s) GPU(s) al arrancar
+
+**Tipo:** Desarrollo · **Esfuerzo:** 2 h · **Dependencias:** T2.1, T2.4
+
+**Descripción:** Al arrancar, el agente enumera las GPUs vía pynvml y registra el nodo y cada GPU en la API (fila en `gpus` con `gpu_id` explícito por T2.1, VRAM total real medida). Registro idempotente: re-arrancar no duplica filas ni pisa `vram_reserved_mb` del ledger.
+
+**Criterios de aceptación:**
+- [ ] Primer arranque en ialab → fila en `gpus` con `gpu_id` declarado y `vram_total_mb` real.
+- [ ] Reinicio del agente → misma fila actualizada, `vram_reserved_mb` intacto.
+- [ ] El registro usa la VRAM medida por pynvml, no un valor hardcodeado.
+
+**Resultado esperado:** La tabla `gpus` refleja el hardware real de ialab sin intervención manual.
+
+---
+
+## T2.7 — Loop de reporte cada 10s con buffer y reintentos
+
+**Tipo:** Desarrollo · **Esfuerzo:** 4 h · **Dependencias:** T2.3, T2.4
+
+**Descripción:** Loop principal del agente: cada 10s toma una muestra y la envía al endpoint de ingesta. Si el VPS no responde, **no crashea**: acumula las muestras en un buffer en memoria (con tope acotado, descartando las más viejas) y las reenvía en lote cuando vuelve la conectividad. Backoff en los reintentos para no martillar al VPS al reconectar.
+
+**Criterios de aceptación:**
+- [ ] Con el VPS arriba, `worker_metrics` recibe una fila cada ~10s.
+- [ ] Cortar la red/VPS 5 min → el agente sigue vivo, y al reconectar envía lo acumulado; las filas conservan su timestamp de captura (criterio de aceptación del plan).
+- [ ] El buffer no crece sin límite (tope verificable en test).
+- [ ] Ningún fallo de red termina el proceso (probado desconectando la red, según estrategia del plan).
+
+**Resultado esperado:** Flujo continuo de métricas tolerante a caídas del VPS, sin intervención.
+
+---
+
+## T2.8 — Unidad systemd con restart automático
+
+**Tipo:** Infraestructura · **Esfuerzo:** 2 h · **Dependencias:** T2.7
+
+**Descripción:** Unidad systemd para el agente en ialab: `Restart=always`, arranque tras la red (`After=network-online.target`), entorno desde archivo (API key fuera del unit file, con permisos restrictivos), logs a journald.
+
+**Criterios de aceptación:**
+- [ ] `systemctl status` muestra el agente activo; los logs salen por `journalctl`.
+- [ ] `kill -9` al proceso → systemd lo reinicia solo.
+- [ ] Reinicio completo de ialab → el agente vuelve solo y sigue reportando (criterio de aceptación del plan).
+- [ ] El archivo de entorno con la API key no es legible por otros usuarios.
+
+**Resultado esperado:** El agente sobrevive a reinicios y crashes sin intervención manual.
+
+---
+
+## T2.9 — Despliegue en ialab + validación contra `nvidia-smi`
+
+**Tipo:** DevOps · **Esfuerzo:** 2 h · **Dependencias:** T2.8
+
+**Descripción:** Integrar el despliegue del agente al flujo existente (script de deploy de F0 o documento de instalación): instalación de dependencias con uv, copia del unit file, enable + start. Validación manual de plausibilidad: comparar varias muestras de `worker_metrics` contra `nvidia-smi` ejecutado a la vez.
+
+**Criterios de aceptación:**
+- [ ] El agente queda corriendo en ialab mediante el procedimiento documentado/scripteado, reproducible desde cero.
+- [ ] `worker_metrics` recibe filas cada 10s con valores plausibles contra `nvidia-smi` (criterio de aceptación del plan).
+- [ ] El procedimiento queda en el repo (script o sección de INFRA.md).
+
+**Resultado esperado:** Agente en producción en ialab con datos verificados contra la fuente de verdad del hardware.
+
+---
+
+## T2.10 — Alerta de deriva ledger ↔ VRAM real
+
+**Tipo:** Desarrollo · **Esfuerzo:** 3 h · **Dependencias:** T2.3
+
+**Descripción:** En la API (lado VPS), al ingerir métricas comparar `vram_free_mb` reportado contra lo que el ledger de `gpus` (`vram_total_mb - vram_reserved_mb`) predice. Si la discrepancia supera un margen configurable, log warning con ambos valores y el `gpu_id`. Solo logging — es insumo para depurar la Fase 1, no un mecanismo de corrección (el plan lo define así; no auto-corregir el ledger).
+
+**Criterios de aceptación:**
+- [ ] Discrepancia mayor al margen → warning en logs con valores del ledger y reales.
+- [ ] Discrepancia dentro del margen → silencio.
+- [ ] El margen es configurable por variable de entorno.
+- [ ] Test unitario de la comparación con casos dentro/fuera del margen.
+
+**Resultado esperado:** Cualquier bug del ledger de F1 se vuelve visible en logs en cuanto haya métricas reales, semanas antes de que se manifieste como OOM.
+
+---
+
+## T2.11 — Job de retención de `worker_metrics`
+
+**Tipo:** Desarrollo · **Esfuerzo:** 3 h · **Dependencias:** T2.3
+
+**Descripción:** Proceso periódico en el VPS (goroutine en la API, mismo patrón que el heartbeat monitor de F1) que agrega a granularidad horaria las métricas con más de 7 días (promedio/máximo por hora) y borra las filas crudas agregadas. Sin tecnologías nuevas: SQL + goroutine.
+
+**Criterios de aceptación:**
+- [ ] Filas de más de 7 días quedan agregadas por hora; las crudas correspondientes se borran.
+- [ ] Filas de menos de 7 días no se tocan.
+- [ ] El job es idempotente: correrlo dos veces no duplica agregados ni pierde datos.
+- [ ] Test de integración contra PostgreSQL real con datos sembrados en distintas fechas.
+
+**Resultado esperado:** `worker_metrics` no crece sin límite; el detalle reciente se conserva para el dashboard (F5).
+
+---
+
+## T2.12 — Pruebas de resiliencia end-to-end de la fase
+
+**Tipo:** DevOps · **Esfuerzo:** 2 h · **Dependencias:** T2.9, T2.10, T2.11
+
+**Descripción:** Ejecutar el checklist de criterios de aceptación de la fase contra el sistema real: reinicio completo de ialab, caída del VPS de 5 min (parar el compose), verificación de recuperación sin intervención. Documentar resultados (es la verificación final antes de cerrar la fase — regla 2 del plan: no avanzar con criterios en rojo).
+
+**Criterios de aceptación:**
+- [ ] Reinicio de ialab → el agente vuelve solo y sigue reportando.
+- [ ] VPS caído 5 min → el agente se recupera sin intervención y no se pierde el flujo posterior.
+- [ ] `worker_metrics` muestra el hueco/lote esperado y luego cadencia normal de 10s.
+- [ ] Checklist completado y registrado.
+
+**Resultado esperado:** Los tres criterios de aceptación de la Fase 2 verificados contra hardware y red reales.
+
+---
+
+## T2.13 — Documentación operativa del agente
+
+**Tipo:** Documentación · **Esfuerzo:** 1 h · **Dependencias:** T2.9
+
+**Descripción:** Actualizar INFRA.md: cómo se instala/arranca/para el agente, dónde están sus logs (journald), variables de entorno, puerto del `/metrics` local, y troubleshooting básico (agente sin reportar, deriva del ledger en logs). Actualizar PROJECT.md al cerrar la fase.
+
+**Criterios de aceptación:**
+- [ ] INFRA.md permite a alguien sin contexto reiniciar el agente y leer sus logs.
+- [ ] PROJECT.md marca la Fase 2 como completada con fecha.
+
+**Resultado esperado:** Operación del agente documentada donde el resto de la infra ya se documenta.
+
+---
+
+## Resumen
+
+| Tarea | Tipo | Esfuerzo | Dependencias |
+|---|---|---|---|
+| T2.1 `gpu_id` explícito (retro #5) | Desarrollo | 2 h | F1 |
+| T2.2 Borrar `ClaimResult` (retro #4) | Desarrollo | 1 h | — |
+| T2.3 Endpoint de ingesta | Desarrollo | 4 h | T2.1 |
+| T2.4 Scaffold agente + métricas | Desarrollo | 4 h | — |
+| T2.5 `/metrics` local | Desarrollo | 2 h | T2.4 |
+| T2.6 Registro nodo/GPU | Desarrollo | 2 h | T2.1, T2.4 |
+| T2.7 Loop de reporte + buffer | Desarrollo | 4 h | T2.3, T2.4 |
+| T2.8 Unidad systemd | Infraestructura | 2 h | T2.7 |
+| T2.9 Deploy + validación nvidia-smi | DevOps | 2 h | T2.8 |
+| T2.10 Alerta de deriva | Desarrollo | 3 h | T2.3 |
+| T2.11 Retención de métricas | Desarrollo | 3 h | T2.3 |
+| T2.12 Pruebas de resiliencia | DevOps | 2 h | T2.9–T2.11 |
+| T2.13 Documentación | Documentación | 1 h | T2.9 |
+
+**Total: ~32 h** (~1 semana, consistente con la estimación del plan). Paralelizable: T2.4–T2.5 (agente) avanza en paralelo con T2.1–T2.3 (API).

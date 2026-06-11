@@ -37,6 +37,7 @@ type registerRequest struct {
 	Hostname     string          `json:"hostname"`
 	Capabilities json.RawMessage `json:"capabilities"`
 	APIKey       string          `json:"api_key"`
+	GPUID        *string         `json:"gpu_id,omitempty"`
 }
 
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
@@ -55,6 +56,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		Hostname:     req.Hostname,
 		Capabilities: req.Capabilities,
 		APIKey:       req.APIKey,
+		GPUID:        req.GPUID,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
