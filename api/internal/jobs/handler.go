@@ -1,0 +1,270 @@
+package jobs
+
+import (
+	"encoding/json"
+	"net/http"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/jeysonjimenez-cmyk/ai-worker-platform/internal/auth"
+	"github.com/jeysonjimenez-cmyk/ai-worker-platform/internal/ssrf"
+	"github.com/jeysonjimenez-cmyk/ai-worker-platform/internal/webhook"
+)
+
+// serviceRequirements maps service → default min_vram_mb.
+var serviceRequirements = map[string]int{
+	"transcription":     10000,
+	"translation":       4000,
+	"llm_chat":          4000,
+	"tts":               2000,
+	"image_generation":  15000,
+	"video_generation":  14000,
+	"lipsync":           13000,
+	"image_compose":     11000,
+	"image_understanding": 4000,
+	"embeddings":        2000,
+}
+
+var priorityMap = map[string]int{
+	"high":   1,
+	"normal": 5,
+	"low":    10,
+}
+
+func writeJSON(w http.ResponseWriter, code int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	json.NewEncoder(w).Encode(v)
+}
+
+func writeError(w http.ResponseWriter, code int, msg string) {
+	writeJSON(w, code, map[string]string{"error": msg})
+}
+
+type Handler struct {
+	pool      *pgxpool.Pool
+	dispatcher *webhook.Dispatcher
+}
+
+func NewHandler(pool *pgxpool.Pool, dispatcher *webhook.Dispatcher) *Handler {
+	return &Handler{pool: pool, dispatcher: dispatcher}
+}
+
+type createJobRequest struct {
+	Service      string          `json:"service"`
+	App          string          `json:"app"`
+	Priority     string          `json:"priority"`
+	Payload      json.RawMessage `json:"payload"`
+	Requirements json.RawMessage `json:"requirements"`
+	Routing      json.RawMessage `json:"routing"`
+	WebhookURL   string          `json:"webhook_url"`
+	WorkflowID   string          `json:"workflow_id"`
+	MaxRetries   *int            `json:"max_retries"`
+}
+
+func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
+	appID := auth.GetAppID(r)
+
+	var req createJobRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "invalid json: "+err.Error())
+		return
+	}
+	if req.Service == "" {
+		writeError(w, http.StatusUnprocessableEntity, "service is required")
+		return
+	}
+
+	// SSRF validation on webhook_url at creation time.
+	if req.WebhookURL != "" {
+		if err := ssrf.ValidateStatic(req.WebhookURL); err != nil {
+			writeError(w, http.StatusUnprocessableEntity, err.Error())
+			return
+		}
+	}
+
+	priority := priorityMap[req.Priority]
+	if priority == 0 {
+		priority = 5
+	}
+
+	// Infer requirements if not provided.
+	requirements := req.Requirements
+	if len(requirements) == 0 || string(requirements) == "null" {
+		if vram, ok := serviceRequirements[req.Service]; ok {
+			r, _ := json.Marshal(map[string]int{"min_vram_mb": vram})
+			requirements = r
+		}
+	}
+
+	// Default routing.
+	routing := req.Routing
+	if len(routing) == 0 || string(routing) == "null" {
+		routing, _ = json.Marshal(map[string]any{"prefer": "local", "allow_external": false})
+	}
+
+	maxRetries := 3
+	if req.MaxRetries != nil {
+		maxRetries = *req.MaxRetries
+	}
+
+	var webhookURL *string
+	if req.WebhookURL != "" {
+		webhookURL = &req.WebhookURL
+	}
+	var workflowID *string
+	if req.WorkflowID != "" {
+		workflowID = &req.WorkflowID
+	}
+
+	appName := req.App
+	if appName == "" {
+		appName = appID
+	}
+
+	job, err := Create(r.Context(), h.pool, CreateParams{
+		App:          appName,
+		Service:      req.Service,
+		Priority:     priority,
+		Payload:      req.Payload,
+		Requirements: requirements,
+		Routing:      routing,
+		MaxRetries:   maxRetries,
+		WebhookURL:   webhookURL,
+		WorkflowID:   workflowID,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// Notify waiting workers.
+	h.pool.Exec(r.Context(), "SELECT pg_notify('jobs_channel', $1)", job.ID)
+
+	writeJSON(w, http.StatusCreated, job)
+}
+
+func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	job, err := Get(r.Context(), h.pool, id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if job == nil {
+		writeError(w, http.StatusNotFound, "job not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, job)
+}
+
+type progressRequest struct {
+	Progress int     `json:"progress"`
+	Message  *string `json:"message"`
+	Level    *string `json:"level"`
+}
+
+func (h *Handler) UpdateProgress(w http.ResponseWriter, r *http.Request) {
+	workerID := auth.GetWorkerID(r)
+	jobID := r.PathValue("id")
+
+	var req progressRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "invalid json")
+		return
+	}
+
+	owned, err := UpdateProgress(r.Context(), h.pool, UpdateProgressParams{
+		JobID:    jobID,
+		WorkerID: workerID,
+		Progress: req.Progress,
+		LogMsg:   req.Message,
+		LogLevel: req.Level,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !owned {
+		writeError(w, http.StatusConflict, "job not owned by this worker")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+type completeRequest struct {
+	Result  json.RawMessage `json:"result"`
+	Error   string          `json:"error"`
+	CostUSD *float64        `json:"cost_usd"`
+}
+
+func (h *Handler) Complete(w http.ResponseWriter, r *http.Request) {
+	workerID := auth.GetWorkerID(r)
+	jobID := r.PathValue("id")
+
+	var req completeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "invalid json")
+		return
+	}
+
+	var errMsg *string
+	if req.Error != "" {
+		errMsg = &req.Error
+	}
+
+	job, owned, err := Complete(r.Context(), h.pool, CompleteParams{
+		JobID:    jobID,
+		WorkerID: workerID,
+		Result:   req.Result,
+		CostUSD:  req.CostUSD,
+		ErrMsg:   errMsg,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !owned {
+		writeError(w, http.StatusConflict, "job not owned by this worker")
+		return
+	}
+
+	// Fire webhook asynchronously for terminal states.
+	if job.Status == "done" || job.Status == "error" {
+		if job.WebhookURL != nil {
+			h.dispatcher.Dispatch(job.ID, *job.WebhookURL, job.Status, job.Result)
+		}
+	}
+
+	writeJSON(w, http.StatusOK, job)
+}
+
+func (h *Handler) Cancel(w http.ResponseWriter, r *http.Request) {
+	appID := auth.GetAppID(r)
+	jobID := r.PathValue("id")
+
+	finalStatus, err := Cancel(r.Context(), h.pool, CancelParams{
+		JobID: jobID,
+		AppID: appID,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if finalStatus == "" {
+		writeError(w, http.StatusNotFound, "job not found or not owned by this app")
+		return
+	}
+	if finalStatus == "done" || finalStatus == "error" {
+		writeError(w, http.StatusConflict, "job already in terminal state: "+finalStatus)
+		return
+	}
+
+	// Fire webhook for cancelled state.
+	job, _ := Get(r.Context(), h.pool, jobID)
+	if job != nil && job.WebhookURL != nil {
+		h.dispatcher.Dispatch(job.ID, *job.WebhookURL, "cancelled", nil)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "cancelled"})
+}

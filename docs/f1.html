@@ -1,0 +1,1161 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Worker Platform · Fase 1</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script>hljs.highlightAll();</script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            surface: '#1a1d27',
+            card: '#1e2130',
+            border: '#2d3148',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { background: #0f1117; color: #e2e8f0; }
+    .state-node { cursor: pointer; transition: all .2s; }
+    .state-node:hover circle { filter: brightness(1.3); }
+    .state-node.active circle { filter: brightness(1.4); stroke-width: 3; }
+    .arrow { marker-end: url(#arrow); }
+    .vram-bar { transition: width .5s cubic-bezier(.4,0,.2,1); }
+    .copy-btn { transition: all .15s; }
+    .copy-btn.copied { background: #10b981 !important; }
+    pre code.hljs { border-radius: 0.5rem; font-size: 0.8rem; }
+    .tab-btn.active { border-bottom: 2px solid #6366f1; color: #818cf8; }
+    .endpoint-card { transition: border-color .2s; }
+    .endpoint-card:hover { border-color: #4338ca; }
+    .detail-panel { transition: max-height .3s ease, opacity .3s ease; overflow: hidden; }
+    .detail-panel.closed { max-height: 0; opacity: 0; }
+    .detail-panel.open { max-height: 2000px; opacity: 1; }
+    .seq-step { animation: fadeSlide .3s ease both; }
+    @keyframes fadeSlide { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+    .timeline-dot { transition: background .3s; }
+    html { scroll-behavior: smooth; }
+    ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: #0f1117; }
+    ::-webkit-scrollbar-thumb { background: #2d3148; border-radius: 3px; }
+    .nav-link { transition: color .15s; }
+    .nav-link:hover { color: #818cf8; }
+    .badge-post  { background:#1e3a5f; color:#60a5fa; }
+    .badge-get   { background:#14532d; color:#4ade80; }
+    .badge-patch { background:#3b1d63; color:#c084fc; }
+  </style>
+</head>
+<body class="min-h-screen font-sans antialiased">
+
+<!-- NAV -->
+<nav class="sticky top-0 z-50 border-b border-border bg-surface/90 backdrop-blur">
+  <div class="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
+    <span class="font-mono text-sm text-indigo-400 font-semibold tracking-wide">ai-worker-platform</span>
+    <div class="flex gap-6 text-sm text-slate-400">
+      <a href="#overview"   class="nav-link">Overview</a>
+      <a href="#lifecycle"  class="nav-link">Ciclo de vida</a>
+      <a href="#endpoints"  class="nav-link">Endpoints</a>
+      <a href="#mechanisms" class="nav-link">Mecanismos</a>
+      <a href="#tests"      class="nav-link">Tests</a>
+      <a href="#next"       class="nav-link">F2</a>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section id="overview" class="max-w-6xl mx-auto px-6 pt-20 pb-12">
+  <div class="flex items-center gap-3 mb-4">
+    <span class="text-xs font-mono bg-indigo-900/60 text-indigo-300 px-3 py-1 rounded-full border border-indigo-700">Fase 1</span>
+    <span class="text-xs text-slate-500">completada 2026-06-10</span>
+  </div>
+  <h1 class="text-4xl font-bold text-white mb-3 leading-tight">Schema PostgreSQL<br>+ API Go (núcleo)</h1>
+  <p class="text-slate-400 text-lg max-w-2xl mb-10">
+    El contrato del sistema: ciclo de vida completo de jobs, autenticación por roles, claim concurrente con reserva atómica de VRAM y reintentos con backoff. Sin workers reales todavía — todo probado con workers simulados.
+  </p>
+
+  <!-- Stats -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
+    <div class="bg-card border border-border rounded-xl p-5">
+      <div class="text-3xl font-bold text-indigo-400">15</div>
+      <div class="text-sm text-slate-400 mt-1">tareas completadas</div>
+    </div>
+    <div class="bg-card border border-border rounded-xl p-5">
+      <div class="text-3xl font-bold text-emerald-400">18</div>
+      <div class="text-sm text-slate-400 mt-1">tests de integración</div>
+    </div>
+    <div class="bg-card border border-border rounded-xl p-5">
+      <div class="text-3xl font-bold text-violet-400">10</div>
+      <div class="text-sm text-slate-400 mt-1">endpoints</div>
+    </div>
+    <div class="bg-card border border-border rounded-xl p-5">
+      <div class="text-3xl font-bold text-amber-400">0</div>
+      <div class="text-sm text-slate-400 mt-1">mocks de base de datos</div>
+    </div>
+  </div>
+
+  <!-- Tech badges -->
+  <div class="flex flex-wrap gap-2">
+    <span class="text-xs font-mono bg-surface border border-border px-3 py-1 rounded-full text-slate-300">Go 1.26</span>
+    <span class="text-xs font-mono bg-surface border border-border px-3 py-1 rounded-full text-slate-300">pgx/v5</span>
+    <span class="text-xs font-mono bg-surface border border-border px-3 py-1 rounded-full text-slate-300">PostgreSQL 17</span>
+    <span class="text-xs font-mono bg-surface border border-border px-3 py-1 rounded-full text-slate-300">SKIP LOCKED</span>
+    <span class="text-xs font-mono bg-surface border border-border px-3 py-1 rounded-full text-slate-300">LISTEN/NOTIFY</span>
+    <span class="text-xs font-mono bg-surface border border-border px-3 py-1 rounded-full text-slate-300">testcontainers-go</span>
+  </div>
+</section>
+
+<div class="max-w-6xl mx-auto px-6">
+  <hr class="border-border">
+</div>
+
+<!-- LIFECYCLE -->
+<section id="lifecycle" class="max-w-6xl mx-auto px-6 py-16">
+  <h2 class="text-2xl font-bold text-white mb-2">Ciclo de vida de un job</h2>
+  <p class="text-slate-400 mb-8 text-sm">Haz click en cada estado para ver qué lo dispara y quién.</p>
+
+  <div class="flex flex-col lg:flex-row gap-8 items-start">
+    <!-- SVG State Machine -->
+    <div class="flex-shrink-0 bg-card border border-border rounded-xl p-6">
+      <svg id="stateMachine" viewBox="0 0 420 340" width="420" height="340">
+        <defs>
+          <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="#4b5563"/>
+          </marker>
+          <marker id="arrow-retry" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="#f59e0b"/>
+          </marker>
+        </defs>
+
+        <!-- Edges -->
+        <!-- pending → running -->
+        <line x1="210" y1="65" x2="210" y2="135" stroke="#4b5563" stroke-width="1.5" class="arrow"/>
+        <text x="215" y="105" fill="#6b7280" font-size="10">worker claims</text>
+
+        <!-- running → done -->
+        <line x1="185" y1="175" x2="95" y2="250" stroke="#4b5563" stroke-width="1.5" class="arrow"/>
+        <text x="108" y="220" fill="#6b7280" font-size="10" transform="rotate(-38,108,220)">complete OK</text>
+
+        <!-- running → error -->
+        <line x1="235" y1="175" x2="295" y2="250" stroke="#4b5563" stroke-width="1.5" class="arrow"/>
+        <text x="252" y="222" fill="#6b7280" font-size="10" transform="rotate(35,252,222)">complete error</text>
+
+        <!-- running → cancelled -->
+        <line x1="250" y1="155" x2="370" y2="205" stroke="#4b5563" stroke-width="1.5" class="arrow"/>
+        <text x="295" y="168" fill="#6b7280" font-size="10">app cancels</text>
+
+        <!-- pending → cancelled -->
+        <line x1="240" y1="50" x2="362" y2="195" stroke="#4b5563" stroke-width="1.5" class="arrow"/>
+        <text x="320" y="115" fill="#6b7280" font-size="10" transform="rotate(68,320,115)">app cancels</text>
+
+        <!-- error → pending (retry) -->
+        <path d="M 278 265 C 230 310 170 310 178 185" stroke="#f59e0b" stroke-width="1.5" fill="none" marker-end="url(#arrow-retry)"/>
+        <text x="185" y="320" fill="#f59e0b" font-size="10">retry (backoff)</text>
+
+        <!-- Nodes -->
+        <g class="state-node" data-state="pending" onclick="selectState('pending')">
+          <circle cx="210" cy="45" r="32" fill="#312e81" stroke="#6366f1" stroke-width="1.5"/>
+          <text x="210" y="49" text-anchor="middle" fill="#a5b4fc" font-size="12" font-weight="600">pending</text>
+        </g>
+        <g class="state-node" data-state="running" onclick="selectState('running')">
+          <circle cx="210" cy="155" r="32" fill="#451a03" stroke="#f59e0b" stroke-width="1.5"/>
+          <text x="210" y="159" text-anchor="middle" fill="#fde68a" font-size="12" font-weight="600">running</text>
+        </g>
+        <g class="state-node" data-state="done" onclick="selectState('done')">
+          <circle cx="80" cy="275" r="32" fill="#052e16" stroke="#10b981" stroke-width="1.5"/>
+          <text x="80" y="279" text-anchor="middle" fill="#6ee7b7" font-size="12" font-weight="600">done</text>
+        </g>
+        <g class="state-node" data-state="error" onclick="selectState('error')">
+          <circle cx="310" cy="275" r="32" fill="#450a0a" stroke="#ef4444" stroke-width="1.5"/>
+          <text x="310" y="279" text-anchor="middle" fill="#fca5a5" font-size="12" font-weight="600">error</text>
+        </g>
+        <g class="state-node" data-state="cancelled" onclick="selectState('cancelled')">
+          <circle cx="383" cy="215" r="28" fill="#1e1b4b" stroke="#64748b" stroke-width="1.5"/>
+          <text x="383" y="212" text-anchor="middle" fill="#94a3b8" font-size="10" font-weight="600">can-</text>
+          <text x="383" y="224" text-anchor="middle" fill="#94a3b8" font-size="10" font-weight="600">celled</text>
+        </g>
+      </svg>
+    </div>
+
+    <!-- Info Panel -->
+    <div class="flex-1 bg-card border border-border rounded-xl p-6 min-h-[200px]">
+      <div id="stateInfo">
+        <p class="text-slate-500 text-sm">← Selecciona un estado en el diagrama</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="max-w-6xl mx-auto px-6"><hr class="border-border"></div>
+
+<!-- ENDPOINTS -->
+<section id="endpoints" class="max-w-6xl mx-auto px-6 py-16">
+  <h2 class="text-2xl font-bold text-white mb-2">Endpoints</h2>
+  <p class="text-slate-400 mb-8 text-sm">Tres roles: App, Worker y Admin. Cada key va en su propio header.</p>
+
+  <!-- Tabs -->
+  <div class="flex gap-0 border-b border-border mb-8">
+    <button class="tab-btn active px-5 py-3 text-sm font-medium text-slate-300" onclick="switchTab('app', this)">Apps <span class="ml-1 text-xs bg-indigo-900 text-indigo-300 px-2 py-0.5 rounded-full">X-App-Key</span></button>
+    <button class="tab-btn px-5 py-3 text-sm font-medium text-slate-400" onclick="switchTab('worker', this)">Workers <span class="ml-1 text-xs bg-amber-900/60 text-amber-300 px-2 py-0.5 rounded-full">X-Worker-Key</span></button>
+    <button class="tab-btn px-5 py-3 text-sm font-medium text-slate-400" onclick="switchTab('admin', this)">Admin <span class="ml-1 text-xs bg-rose-900/60 text-rose-300 px-2 py-0.5 rounded-full">X-Admin-Key</span></button>
+  </div>
+
+  <!-- App tab -->
+  <div id="tab-app" class="tab-content space-y-4">
+
+    <!-- POST /ai/jobs -->
+    <div class="endpoint-card bg-card border border-border rounded-xl overflow-hidden">
+      <button class="w-full text-left px-6 py-4 flex items-center gap-4" onclick="toggleEndpoint(this)">
+        <span class="badge-post text-xs font-mono font-bold px-2 py-1 rounded">POST</span>
+        <span class="font-mono text-sm text-slate-200">/ai/jobs</span>
+        <span class="text-sm text-slate-400 ml-2">Crear un job</span>
+        <svg class="ml-auto w-4 h-4 text-slate-500 chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+      </button>
+      <div class="detail-panel closed px-6 pb-6">
+        <p class="text-sm text-slate-400 mb-4">Crea un job con validación de payload. Infiere <code class="text-indigo-300">requirements</code> por servicio si no se proveen. Valida SSRF en <code class="text-indigo-300">webhook_url</code>. Emite <code class="text-indigo-300">NOTIFY jobs_channel</code> para despertar workers en long-poll.</p>
+        <div class="grid md:grid-cols-2 gap-4">
+          <div>
+            <p class="text-xs text-slate-500 mb-2 font-mono">REQUEST</p>
+            <pre><code class="language-bash">curl -X POST http://localhost:8080/ai/jobs \
+  -H "X-App-Key: my-app-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "service": "transcription",
+    "priority": "high",
+    "payload": {
+      "audio_url": "https://cdn.example.com/audio.mp3",
+      "language": "es"
+    },
+    "webhook_url": "https://mi-app.com/callbacks/done"
+  }'</code></pre>
+          </div>
+          <div>
+            <p class="text-xs text-slate-500 mb-2 font-mono">RESPONSE 201</p>
+            <pre><code class="language-json">{
+  "id": "a1b2c3d4",
+  "service": "transcription",
+  "status": "pending",
+  "priority": 1,
+  "requirements": { "min_vram_mb": 10000 },
+  "routing": { "prefer": "local", "allow_external": false },
+  "retry_count": 0,
+  "max_retries": 3,
+  "created_at": "2026-06-10T00:00:00Z"
+}</code></pre>
+          </div>
+        </div>
+        <div class="mt-4 bg-surface rounded-lg p-4 border border-border">
+          <p class="text-xs font-semibold text-slate-400 mb-2">VALIDACIONES</p>
+          <ul class="text-xs text-slate-400 space-y-1">
+            <li>• <code class="text-rose-400">service</code> vacío → 422</li>
+            <li>• <code class="text-rose-400">webhook_url</code> con IP privada/Tailscale → 422 (RFC 1918, localhost, 100.64.0.0/10)</li>
+            <li>• <code class="text-rose-400">webhook_url</code> sin https:// → 422</li>
+            <li>• <code class="text-amber-400">priority</code> omitido → "normal" (5)</li>
+            <li>• <code class="text-amber-400">requirements</code> omitido → inferido por service</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- GET /ai/jobs/{id} -->
+    <div class="endpoint-card bg-card border border-border rounded-xl overflow-hidden">
+      <button class="w-full text-left px-6 py-4 flex items-center gap-4" onclick="toggleEndpoint(this)">
+        <span class="badge-get text-xs font-mono font-bold px-2 py-1 rounded">GET</span>
+        <span class="font-mono text-sm text-slate-200">/ai/jobs/{id}</span>
+        <span class="text-sm text-slate-400 ml-2">Consultar estado de un job</span>
+        <svg class="ml-auto w-4 h-4 text-slate-500 chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+      </button>
+      <div class="detail-panel closed px-6 pb-6">
+        <p class="text-sm text-slate-400 mb-4">Devuelve el estado completo del job incluyendo <code class="text-indigo-300">progress</code>, <code class="text-indigo-300">result</code> y el worker asignado.</p>
+        <div class="grid md:grid-cols-2 gap-4">
+          <div>
+            <p class="text-xs text-slate-500 mb-2 font-mono">REQUEST</p>
+            <pre><code class="language-bash">curl http://localhost:8080/ai/jobs/a1b2c3d4 \
+  -H "X-App-Key: my-app-key"</code></pre>
+          </div>
+          <div>
+            <p class="text-xs text-slate-500 mb-2 font-mono">RESPONSE 200 (running)</p>
+            <pre><code class="language-json">{
+  "id": "a1b2c3d4",
+  "status": "running",
+  "progress": 42,
+  "worker_id": "worker-whisper-nvidia",
+  "started_at": "2026-06-10T00:01:00Z"
+}</code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- POST /ai/jobs/{id}/cancel -->
+    <div class="endpoint-card bg-card border border-border rounded-xl overflow-hidden">
+      <button class="w-full text-left px-6 py-4 flex items-center gap-4" onclick="toggleEndpoint(this)">
+        <span class="badge-post text-xs font-mono font-bold px-2 py-1 rounded">POST</span>
+        <span class="font-mono text-sm text-slate-200">/ai/jobs/{id}/cancel</span>
+        <span class="text-sm text-slate-400 ml-2">Cancelar un job</span>
+        <svg class="ml-auto w-4 h-4 text-slate-500 chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+      </button>
+      <div class="detail-panel closed px-6 pb-6">
+        <p class="text-sm text-slate-400 mb-4">Solo la app propietaria puede cancelar. <code class="text-indigo-300">pending</code> → cancelado inmediato. <code class="text-indigo-300">running</code> → cancelado + VRAM liberada. <code class="text-indigo-300">done/error</code> → 409.</p>
+        <div class="grid md:grid-cols-2 gap-4">
+          <div>
+            <p class="text-xs text-slate-500 mb-2 font-mono">REQUEST</p>
+            <pre><code class="language-bash">curl -X POST \
+  http://localhost:8080/ai/jobs/a1b2c3d4/cancel \
+  -H "X-App-Key: my-app-key"</code></pre>
+          </div>
+          <div>
+            <p class="text-xs text-slate-500 mb-2 font-mono">RESPONSE 200</p>
+            <pre><code class="language-json">{ "status": "cancelled" }</code></pre>
+            <p class="text-xs text-slate-500 mt-3 mb-2 font-mono">RESPONSE 409 (ya terminado)</p>
+            <pre><code class="language-json">{ "error": "job already in terminal state: done" }</code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /tab-app -->
+
+  <!-- Worker tab -->
+  <div id="tab-worker" class="tab-content hidden space-y-4">
+
+    <!-- POST /workers/register -->
+    <div class="endpoint-card bg-card border border-border rounded-xl overflow-hidden">
+      <button class="w-full text-left px-6 py-4 flex items-center gap-4" onclick="toggleEndpoint(this)">
+        <span class="badge-post text-xs font-mono font-bold px-2 py-1 rounded">POST</span>
+        <span class="font-mono text-sm text-slate-200">/workers/register</span>
+        <span class="text-sm text-slate-400 ml-2">Registrar un worker</span>
+        <span class="ml-2 text-xs bg-rose-900/40 text-rose-300 px-2 py-0.5 rounded-full">X-Admin-Key</span>
+        <svg class="ml-auto w-4 h-4 text-slate-500 chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+      </button>
+      <div class="detail-panel closed px-6 pb-6">
+        <p class="text-sm text-slate-400 mb-4">Registro idempotente: llamar dos veces no duplica filas. Si el worker tiene GPU (<code class="text-indigo-300">cuda: true</code>), crea o actualiza la fila en <code class="text-indigo-300">gpus</code> con <code class="text-indigo-300">vram_reserved_mb = 0</code>.</p>
+        <div class="grid md:grid-cols-2 gap-4">
+          <div>
+            <p class="text-xs text-slate-500 mb-2 font-mono">REQUEST</p>
+            <pre><code class="language-bash">curl -X POST http://localhost:8080/workers/register \
+  -H "X-Admin-Key: admin-secret" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "worker-whisper-nvidia",
+    "hostname": "ialab",
+    "api_key": "wk-secret-123",
+    "capabilities": {
+      "services": ["transcription"],
+      "cuda": true,
+      "vram_total_mb": 16376,
+      "max_concurrency": 1
+    }
+  }'</code></pre>
+          </div>
+          <div>
+            <p class="text-xs text-slate-500 mb-2 font-mono">RESPONSE 200</p>
+            <pre><code class="language-json">{
+  "id": "worker-whisper-nvidia",
+  "hostname": "ialab",
+  "status": "online",
+  "gpu_id": "ialab/gpu-0",
+  "registered_at": "2026-06-10T00:00:00Z"
+}</code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- POST /workers/{id}/claim -->
+    <div class="endpoint-card bg-card border border-border rounded-xl overflow-hidden">
+      <button class="w-full text-left px-6 py-4 flex items-center gap-4" onclick="toggleEndpoint(this)">
+        <span class="badge-post text-xs font-mono font-bold px-2 py-1 rounded">POST</span>
+        <span class="font-mono text-sm text-slate-200">/workers/{id}/claim</span>
+        <span class="text-sm text-slate-400 ml-2">Reclamar el próximo job</span>
+        <svg class="ml-auto w-4 h-4 text-slate-500 chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+      </button>
+      <div class="detail-panel closed px-6 pb-6">
+        <p class="text-sm text-slate-400 mb-4">El corazón del sistema. SKIP LOCKED + reserva atómica de VRAM en una transacción. El parámetro <code class="text-indigo-300">?wait=N</code> activa long-polling via LISTEN/NOTIFY: el worker espera hasta N segundos a que llegue un job compatible.</p>
+        <div class="grid md:grid-cols-2 gap-4">
+          <div>
+            <p class="text-xs text-slate-500 mb-2 font-mono">REQUEST (con long-polling)</p>
+            <pre><code class="language-bash">curl -X POST \
+  "http://localhost:8080/workers/worker-whisper-nvidia/claim?wait=30" \
+  -H "X-Worker-Key: wk-secret-123"</code></pre>
+          </div>
+          <div>
+            <p class="text-xs text-slate-500 mb-2 font-mono">RESPONSE 200 (job asignado)</p>
+            <pre><code class="language-json">{
+  "id": "a1b2c3d4",
+  "service": "transcription",
+  "status": "running",
+  "worker_id": "worker-whisper-nvidia",
+  "payload": { "audio_url": "..." },
+  "requirements": { "min_vram_mb": 10000 }
+}</code></pre>
+            <p class="text-xs text-slate-500 mt-3 font-mono">RESPONSE 204 — sin jobs disponibles</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PATCH /ai/jobs/{id}/progress -->
+    <div class="endpoint-card bg-card border border-border rounded-xl overflow-hidden">
+      <button class="w-full text-left px-6 py-4 flex items-center gap-4" onclick="toggleEndpoint(this)">
+        <span class="badge-patch text-xs font-mono font-bold px-2 py-1 rounded">PATCH</span>
+        <span class="font-mono text-sm text-slate-200">/ai/jobs/{id}/progress</span>
+        <span class="text-sm text-slate-400 ml-2">Reportar progreso</span>
+        <svg class="ml-auto w-4 h-4 text-slate-500 chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+      </button>
+      <div class="detail-panel closed px-6 pb-6">
+        <p class="text-sm text-slate-400 mb-4">Con <strong>fencing</strong>: solo el worker dueño puede actualizar. Un worker diferente recibe 409. Opcionalmente escribe en <code class="text-indigo-300">job_logs</code>.</p>
+        <div class="grid md:grid-cols-2 gap-4">
+          <div>
+            <p class="text-xs text-slate-500 mb-2 font-mono">REQUEST</p>
+            <pre><code class="language-bash">curl -X PATCH \
+  http://localhost:8080/ai/jobs/a1b2c3d4/progress \
+  -H "X-Worker-Key: wk-secret-123" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "progress": 42,
+    "message": "Transcribiendo segmento 3/7...",
+    "level": "info"
+  }'</code></pre>
+          </div>
+          <div>
+            <p class="text-xs text-slate-500 mb-2 font-mono">RESPONSE 200</p>
+            <pre><code class="language-json">{ "status": "ok" }</code></pre>
+            <p class="text-xs text-slate-500 mt-3 mb-2 font-mono">RESPONSE 409 (fencing)</p>
+            <pre><code class="language-json">{ "error": "job not owned by this worker" }</code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PATCH /ai/jobs/{id}/complete -->
+    <div class="endpoint-card bg-card border border-border rounded-xl overflow-hidden">
+      <button class="w-full text-left px-6 py-4 flex items-center gap-4" onclick="toggleEndpoint(this)">
+        <span class="badge-patch text-xs font-mono font-bold px-2 py-1 rounded">PATCH</span>
+        <span class="font-mono text-sm text-slate-200">/ai/jobs/{id}/complete</span>
+        <span class="text-sm text-slate-400 ml-2">Completar o reportar error</span>
+        <svg class="ml-auto w-4 h-4 text-slate-500 chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+      </button>
+      <div class="detail-panel closed px-6 pb-6">
+        <p class="text-sm text-slate-400 mb-4">Transición terminal. Libera la reserva de VRAM, activa retry si corresponde, dispara webhook. Con fencing: 409 si el worker ya no es dueño del job.</p>
+        <div class="grid md:grid-cols-2 gap-4">
+          <div>
+            <p class="text-xs text-slate-500 mb-2 font-mono">Éxito</p>
+            <pre><code class="language-bash">curl -X PATCH \
+  http://localhost:8080/ai/jobs/a1b2c3d4/complete \
+  -H "X-Worker-Key: wk-secret-123" \
+  -d '{ "result": { "transcript": "Hola mundo..." } }'</code></pre>
+            <p class="text-xs text-slate-500 mt-4 mb-2 font-mono">Error (dispara retry si max_retries > 0)</p>
+            <pre><code class="language-bash">curl -X PATCH \
+  http://localhost:8080/ai/jobs/a1b2c3d4/complete \
+  -H "X-Worker-Key: wk-secret-123" \
+  -d '{ "error": "CUDA OOM al cargar modelo" }'</code></pre>
+          </div>
+          <div>
+            <p class="text-xs text-slate-500 mb-2 font-mono">RESPONSE 200</p>
+            <pre><code class="language-json">{
+  "id": "a1b2c3d4",
+  "status": "done",
+  "result": { "transcript": "Hola mundo..." },
+  "completed_at": "2026-06-10T00:02:00Z"
+}</code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- POST /workers/{id}/heartbeat -->
+    <div class="endpoint-card bg-card border border-border rounded-xl overflow-hidden">
+      <button class="w-full text-left px-6 py-4 flex items-center gap-4" onclick="toggleEndpoint(this)">
+        <span class="badge-post text-xs font-mono font-bold px-2 py-1 rounded">POST</span>
+        <span class="font-mono text-sm text-slate-200">/workers/{id}/heartbeat</span>
+        <span class="text-sm text-slate-400 ml-2">Señal de vida del worker</span>
+        <svg class="ml-auto w-4 h-4 text-slate-500 chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+      </button>
+      <div class="detail-panel closed px-6 pb-6">
+        <p class="text-sm text-slate-400 mb-4">Actualiza <code class="text-indigo-300">last_heartbeat</code> y marca al worker como <code class="text-emerald-400">online</code>. Si el worker no latió en 90s, el monitor lo marca <code class="text-slate-400">offline</code> y reencola sus jobs.</p>
+        <div class="grid md:grid-cols-2 gap-4">
+          <div>
+            <p class="text-xs text-slate-500 mb-2 font-mono">REQUEST (cada 10s)</p>
+            <pre><code class="language-bash">curl -X POST \
+  http://localhost:8080/workers/worker-whisper-nvidia/heartbeat \
+  -H "X-Worker-Key: wk-secret-123"</code></pre>
+          </div>
+          <div>
+            <p class="text-xs text-slate-500 mb-2 font-mono">RESPONSE 200</p>
+            <pre><code class="language-json">{ "status": "ok" }</code></pre>
+            <p class="text-xs text-slate-500 mt-3 font-mono">RESPONSE 404 — worker no registrado</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- POST /workers/{id}/unload-model -->
+    <div class="endpoint-card bg-card border border-border rounded-xl overflow-hidden">
+      <button class="w-full text-left px-6 py-4 flex items-center gap-4" onclick="toggleEndpoint(this)">
+        <span class="badge-post text-xs font-mono font-bold px-2 py-1 rounded">POST</span>
+        <span class="font-mono text-sm text-slate-200">/workers/{id}/unload-model</span>
+        <span class="text-sm text-slate-400 ml-2">Liberar VRAM al descargar modelo</span>
+        <svg class="ml-auto w-4 h-4 text-slate-500 chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+      </button>
+      <div class="detail-panel closed px-6 pb-6">
+        <p class="text-sm text-slate-400 mb-4">Un modelo que queda "caliente" en VRAM mantiene su reserva aunque el job ya terminó. Este endpoint libera explícitamente esa reserva cuando el worker decide descargar el modelo.</p>
+        <pre><code class="language-bash">curl -X POST \
+  http://localhost:8080/workers/worker-whisper-nvidia/unload-model \
+  -H "X-Worker-Key: wk-secret-123"</code></pre>
+      </div>
+    </div>
+
+  </div><!-- /tab-worker -->
+
+  <!-- Admin tab -->
+  <div id="tab-admin" class="tab-content hidden space-y-4">
+    <div class="bg-card border border-border rounded-xl p-6">
+      <p class="text-slate-400 text-sm">El rol admin se usa actualmente solo para registrar workers. El healthcheck es público.</p>
+      <div class="mt-4 grid md:grid-cols-2 gap-4">
+        <div>
+          <p class="text-xs text-slate-500 mb-2 font-mono">GET /healthz — sin auth</p>
+          <pre><code class="language-bash">curl http://localhost:8080/healthz</code></pre>
+          <pre class="mt-2"><code class="language-json">{ "status": "ok" }</code></pre>
+        </div>
+        <div>
+          <p class="text-xs text-slate-400 text-sm mt-2">El header admin se configura en <code class="text-indigo-300">ADMIN_API_KEY</code> como variable de entorno. Ver <code class="text-indigo-300">deploy/vps/.env.example</code>.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<div class="max-w-6xl mx-auto px-6"><hr class="border-border"></div>
+
+<!-- MECHANISMS -->
+<section id="mechanisms" class="max-w-6xl mx-auto px-6 py-16">
+  <h2 class="text-2xl font-bold text-white mb-10">Mecanismos clave</h2>
+
+  <!-- VRAM LEDGER -->
+  <div class="mb-14">
+    <h3 class="text-lg font-semibold text-white mb-1">Ledger de VRAM</h3>
+    <p class="text-slate-400 text-sm mb-6">El problema: varios workers comparten la misma GPU. Filtrar por métricas tiene hasta 10s de lag y dos claims simultáneos pueden ver la misma VRAM "libre". La solución: un UPDATE atómico que actúa como semáforo.</p>
+
+    <div class="grid lg:grid-cols-2 gap-8">
+      <!-- Interactive demo -->
+      <div class="bg-card border border-border rounded-xl p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h4 class="text-sm font-semibold text-slate-300">Demo interactiva</h4>
+          <div class="text-xs text-slate-500 font-mono" id="vramLabel">0 / 10,000 MB reservados</div>
+        </div>
+
+        <!-- Bar -->
+        <div class="relative h-8 bg-surface rounded-lg overflow-hidden border border-border mb-4">
+          <div id="vramBar" class="vram-bar h-full bg-indigo-600 rounded-lg" style="width:0%"></div>
+          <div class="absolute inset-0 flex items-center justify-center text-xs font-mono text-white/80" id="vramPct">0%</div>
+        </div>
+
+        <!-- Worker slots -->
+        <div class="grid grid-cols-5 gap-2 mb-5" id="workerSlots">
+          <!-- filled by JS -->
+        </div>
+
+        <div class="flex gap-3">
+          <button onclick="claimVRAM()" id="claimBtn" class="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+            + Claim (3,000 MB)
+          </button>
+          <button onclick="resetVRAM()" class="bg-surface border border-border hover:border-slate-500 text-slate-300 text-sm px-4 py-2 rounded-lg transition-colors">
+            Reset
+          </button>
+        </div>
+
+        <div id="vramMessage" class="mt-3 text-xs rounded-lg px-3 py-2 hidden"></div>
+      </div>
+
+      <!-- SQL -->
+      <div class="bg-card border border-border rounded-xl p-6">
+        <h4 class="text-sm font-semibold text-slate-300 mb-3">El UPDATE atómico</h4>
+        <pre><code class="language-sql">-- Si no hay VRAM suficiente, no retorna fila
+-- y el claim no se asigna (sin error, sin retry)
+UPDATE gpus
+SET vram_reserved_mb = vram_reserved_mb + $min_vram
+WHERE id = $gpu_id
+  AND vram_reserved_mb + $min_vram
+      <= vram_total_mb - $margin
+RETURNING id;</code></pre>
+        <div class="mt-4 space-y-2 text-xs text-slate-400">
+          <div class="flex items-start gap-2">
+            <span class="text-emerald-400 mt-0.5">✓</span>
+            <span>Si retorna fila → VRAM reservada, job asignado</span>
+          </div>
+          <div class="flex items-start gap-2">
+            <span class="text-rose-400 mt-0.5">✗</span>
+            <span>Si no retorna fila → VRAM insuficiente, job sigue <code class="text-indigo-300">pending</code></span>
+          </div>
+          <div class="flex items-start gap-2">
+            <span class="text-amber-400 mt-0.5">⚡</span>
+            <span>Todo ocurre en la misma transacción con el SKIP LOCKED — atómico e imposible de sobre-reservar</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CLAIM FLOW -->
+  <div class="mb-14">
+    <h3 class="text-lg font-semibold text-white mb-1">Flujo del claim</h3>
+    <p class="text-slate-400 text-sm mb-6">4 pasos dentro de una única transacción PostgreSQL. Si cualquier paso falla, todo hace rollback.</p>
+
+    <div class="bg-card border border-border rounded-xl p-6">
+      <div class="flex flex-col md:flex-row items-stretch gap-0">
+
+        <div class="flex-1 relative">
+          <div class="flex items-center gap-3 p-4 rounded-lg border border-indigo-700/50 bg-indigo-900/20 mb-3">
+            <span class="w-7 h-7 rounded-full bg-indigo-700 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">1</span>
+            <div>
+              <p class="text-sm font-medium text-slate-200">Leer capabilities del worker</p>
+              <p class="text-xs text-slate-500 mt-0.5">SELECT capabilities, gpu_id FROM workers WHERE id = $1</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-3 p-4 rounded-lg border border-amber-700/50 bg-amber-900/20 mb-3">
+            <span class="w-7 h-7 rounded-full bg-amber-700 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">2</span>
+            <div>
+              <p class="text-sm font-medium text-slate-200">Seleccionar job elegible</p>
+              <p class="text-xs text-slate-500 mt-0.5">WHERE status='pending' AND service = ANY($services)<br>ORDER BY priority, created_at<br>FOR UPDATE SKIP LOCKED LIMIT 1</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-3 p-4 rounded-lg border border-violet-700/50 bg-violet-900/20 mb-3">
+            <span class="w-7 h-7 rounded-full bg-violet-700 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">3</span>
+            <div>
+              <p class="text-sm font-medium text-slate-200">Reservar VRAM atómicamente</p>
+              <p class="text-xs text-slate-500 mt-0.5">UPDATE gpus SET vram_reserved_mb += $req<br>WHERE ... AND vram_reserved_mb + $req &lt;= total - margin</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-3 p-4 rounded-lg border border-emerald-700/50 bg-emerald-900/20">
+            <span class="w-7 h-7 rounded-full bg-emerald-700 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">4</span>
+            <div>
+              <p class="text-sm font-medium text-slate-200">Transicionar job a running</p>
+              <p class="text-xs text-slate-500 mt-0.5">UPDATE jobs SET status='running', worker_id=$id, started_at=now()</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="hidden md:flex items-center px-6">
+          <div class="text-slate-600 text-xs text-center">
+            <div class="text-2xl mb-2">🔒</div>
+            <div>COMMIT</div>
+            <div>o</div>
+            <div>ROLLBACK</div>
+          </div>
+        </div>
+
+        <div class="flex-none md:w-48 flex flex-col justify-center gap-3 mt-4 md:mt-0">
+          <div class="bg-emerald-900/30 border border-emerald-700/50 rounded-lg p-3 text-center">
+            <div class="text-emerald-400 font-mono text-sm font-bold">200 OK</div>
+            <div class="text-xs text-slate-400 mt-1">Job asignado</div>
+          </div>
+          <div class="bg-surface border border-border rounded-lg p-3 text-center">
+            <div class="text-slate-400 font-mono text-sm font-bold">204</div>
+            <div class="text-xs text-slate-500 mt-1">Sin jobs o VRAM insuficiente</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FENCING -->
+  <div class="mb-14">
+    <h3 class="text-lg font-semibold text-white mb-1">Fencing — el worker zombie</h3>
+    <p class="text-slate-400 text-sm mb-6">Sin fencing, una caída de red de 90s produce doble ejecución y doble costo. El campo <code class="text-indigo-300">worker_id</code> en el job actúa como token de propiedad.</p>
+
+    <div class="bg-card border border-border rounded-xl p-6">
+      <div class="relative">
+        <!-- Timeline -->
+        <div class="space-y-0">
+          <div class="flex items-start gap-4">
+            <div class="flex flex-col items-center flex-shrink-0">
+              <div class="w-3 h-3 rounded-full bg-emerald-500 mt-0.5"></div>
+              <div class="w-0.5 h-10 bg-border"></div>
+            </div>
+            <div class="pb-4">
+              <p class="text-sm font-medium text-slate-200">Worker A clama el job</p>
+              <p class="text-xs text-slate-500">jobs.worker_id = "worker-A"</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-4">
+            <div class="flex flex-col items-center flex-shrink-0">
+              <div class="w-3 h-3 rounded-full bg-amber-500 mt-0.5"></div>
+              <div class="w-0.5 h-10 bg-border"></div>
+            </div>
+            <div class="pb-4">
+              <p class="text-sm font-medium text-slate-200">Worker A pierde red (90s)</p>
+              <p class="text-xs text-slate-500">Sigue ejecutando localmente, no puede hacer heartbeat</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-4">
+            <div class="flex flex-col items-center flex-shrink-0">
+              <div class="w-3 h-3 rounded-full bg-amber-500 mt-0.5"></div>
+              <div class="w-0.5 h-10 bg-border"></div>
+            </div>
+            <div class="pb-4">
+              <p class="text-sm font-medium text-slate-200">Monitor detecta timeout</p>
+              <p class="text-xs text-slate-500">Job → pending (worker_id = NULL), VRAM liberada, Worker A → offline</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-4">
+            <div class="flex flex-col items-center flex-shrink-0">
+              <div class="w-3 h-3 rounded-full bg-indigo-500 mt-0.5"></div>
+              <div class="w-0.5 h-10 bg-border"></div>
+            </div>
+            <div class="pb-4">
+              <p class="text-sm font-medium text-slate-200">Worker B clama el mismo job</p>
+              <p class="text-xs text-slate-500">jobs.worker_id = "worker-B"</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-4">
+            <div class="flex flex-col items-center flex-shrink-0">
+              <div class="w-3 h-3 rounded-full bg-rose-500 mt-0.5"></div>
+            </div>
+            <div>
+              <p class="text-sm font-medium text-rose-300">Worker A vuelve y reporta complete</p>
+              <p class="text-xs text-slate-500">WHERE id=$job AND worker_id="worker-A" → 0 filas afectadas</p>
+              <span class="inline-block mt-1 bg-rose-900/40 text-rose-300 text-xs font-mono px-2 py-1 rounded">409 Conflict</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-6 bg-surface rounded-lg p-4 border border-border">
+        <p class="text-xs font-semibold text-slate-400 mb-2">EL UPDATE CON FENCING</p>
+        <pre><code class="language-sql">UPDATE jobs
+SET status = $1, result = $2, completed_at = now()
+WHERE id = $job_id
+  AND worker_id = $reporter_id  -- fencing
+  AND status = 'running'
+RETURNING id;</code></pre>
+        <p class="text-xs text-slate-500 mt-2">Si no retorna fila → el handler responde 409. El worker zombie descarta su resultado.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- RETRY BACKOFF -->
+  <div class="mb-4">
+    <h3 class="text-lg font-semibold text-white mb-1">Retry con backoff exponencial</h3>
+    <p class="text-slate-400 text-sm mb-6">Fallos transitorios se recuperan solos. Fallos permanentes terminan en <code class="text-rose-400">error</code> sin loops infinitos.</p>
+
+    <div class="bg-card border border-border rounded-xl p-6">
+      <!-- Timeline visual -->
+      <div class="mb-6">
+        <div id="retryTimeline" class="relative">
+          <!-- filled by JS -->
+        </div>
+      </div>
+
+      <div class="grid md:grid-cols-2 gap-6">
+        <div class="bg-surface rounded-lg p-4 border border-border">
+          <p class="text-xs font-semibold text-slate-400 mb-2">LÓGICA EN CÓDIGO</p>
+          <pre><code class="language-go">// retry.go
+func shouldRetry(retryCount, maxRetries int) bool {
+    return retryCount &lt; maxRetries
+}
+
+func nextRetryDelay(retryCount int) time.Duration {
+    // 30s → 60s → 120s
+    return time.Duration(30*(1&lt;&lt;retryCount)) * time.Second
+}</code></pre>
+        </div>
+        <div class="space-y-3 text-sm">
+          <div class="flex items-start gap-3 p-3 bg-surface border border-border rounded-lg">
+            <span class="text-amber-400 text-lg">⚠️</span>
+            <div>
+              <p class="text-slate-300 font-medium text-xs">max_retries = 0</p>
+              <p class="text-xs text-slate-500">Error directo, sin reintentos. Para payloads inválidos o cancelaciones.</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 p-3 bg-surface border border-border rounded-lg">
+            <span class="text-emerald-400 text-lg">♻️</span>
+            <div>
+              <p class="text-slate-300 font-medium text-xs">retry_after en el claim</p>
+              <p class="text-xs text-slate-500">El claim ignora jobs con <code class="text-indigo-300">retry_after &gt; now()</code>, respetando el backoff.</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 p-3 bg-surface border border-border rounded-lg">
+            <span class="text-rose-400 text-lg">🛑</span>
+            <div>
+              <p class="text-slate-300 font-medium text-xs">retry_count = max_retries</p>
+              <p class="text-xs text-slate-500">Próximo <code>complete</code> con error → status <code class="text-rose-400">error</code> definitivo, webhook disparado.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<div class="max-w-6xl mx-auto px-6"><hr class="border-border"></div>
+
+<!-- TESTS -->
+<section id="tests" class="max-w-6xl mx-auto px-6 py-16">
+  <h2 class="text-2xl font-bold text-white mb-2">Tests</h2>
+  <p class="text-slate-400 mb-8 text-sm">18 tests de integración contra PostgreSQL real via testcontainers. Cero mocks de BD — SKIP LOCKED y el ledger solo se pueden probar con Postgres de verdad.</p>
+
+  <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+
+    <!-- RACE TEST - destacado -->
+    <div class="md:col-span-2 lg:col-span-3 bg-amber-900/20 border border-amber-700/50 rounded-xl p-6">
+      <div class="flex items-center gap-3 mb-3">
+        <span class="text-2xl">🏆</span>
+        <span class="text-sm font-semibold text-amber-300">El test más importante del proyecto</span>
+        <span class="ml-auto font-mono text-xs text-emerald-400 bg-emerald-900/40 px-2 py-1 rounded">PASS</span>
+      </div>
+      <p class="font-mono text-sm text-slate-200 mb-3">TestVRAMLedgerRace</p>
+      <p class="text-sm text-slate-400 mb-4">10 workers compiten simultáneamente por jobs que suman más VRAM que la GPU disponible. Verifica que el ledger nunca se sobre-reserva bajo concurrencia real.</p>
+      <div class="bg-surface rounded-lg p-4 border border-border text-xs font-mono text-slate-400">
+        GPU: 10,000 MB · Jobs: 10 × 3,000 MB = 30,000 MB · Workers concurrentes: 10<br>
+        <span class="text-emerald-400">→ Solo 3 claims exitosos (9,000 MB reservados)</span><br>
+        <span class="text-slate-500">→ 7 workers reciben 204 (sin VRAM disponible)</span>
+      </div>
+    </div>
+
+    <div class="bg-card border border-border rounded-xl p-5">
+      <div class="flex items-center justify-between mb-2">
+        <p class="text-sm font-medium text-slate-300">Auth / Roles</p>
+        <span class="font-mono text-xs text-emerald-400">PASS</span>
+      </div>
+      <ul class="text-xs text-slate-500 space-y-1">
+        <li>• Request sin key → 401</li>
+        <li>• App key en endpoint de worker → 401</li>
+      </ul>
+    </div>
+
+    <div class="bg-card border border-border rounded-xl p-5">
+      <div class="flex items-center justify-between mb-2">
+        <p class="text-sm font-medium text-slate-300">SSRF</p>
+        <span class="font-mono text-xs text-emerald-400">PASS</span>
+      </div>
+      <ul class="text-xs text-slate-500 space-y-1">
+        <li>• 10.x.x.x → 422</li>
+        <li>• 192.168.x.x → 422</li>
+        <li>• 127.0.0.1 → 422</li>
+        <li>• 100.64.x.x → 422 (Tailscale)</li>
+        <li>• http:// → 422</li>
+      </ul>
+    </div>
+
+    <div class="bg-card border border-border rounded-xl p-5">
+      <div class="flex items-center justify-between mb-2">
+        <p class="text-sm font-medium text-slate-300">Claim</p>
+        <span class="font-mono text-xs text-emerald-400">PASS</span>
+      </div>
+      <ul class="text-xs text-slate-500 space-y-1">
+        <li>• Flujo básico E2E</li>
+        <li>• VRAM insuficiente → 204</li>
+        <li>• Servicio incompatible → 204</li>
+      </ul>
+    </div>
+
+    <div class="bg-card border border-border rounded-xl p-5">
+      <div class="flex items-center justify-between mb-2">
+        <p class="text-sm font-medium text-slate-300">Fencing</p>
+        <span class="font-mono text-xs text-emerald-400">PASS</span>
+      </div>
+      <ul class="text-xs text-slate-500 space-y-1">
+        <li>• Progress por worker incorrecto → 409</li>
+        <li>• Complete por worker incorrecto → 409</li>
+      </ul>
+    </div>
+
+    <div class="bg-card border border-border rounded-xl p-5">
+      <div class="flex items-center justify-between mb-2">
+        <p class="text-sm font-medium text-slate-300">Cancel</p>
+        <span class="font-mono text-xs text-emerald-400">PASS</span>
+      </div>
+      <ul class="text-xs text-slate-500 space-y-1">
+        <li>• Pending → cancelled</li>
+        <li>• Done → 409</li>
+        <li>• App incorrecta → 404</li>
+      </ul>
+    </div>
+
+    <div class="bg-card border border-border rounded-xl p-5">
+      <div class="flex items-center justify-between mb-2">
+        <p class="text-sm font-medium text-slate-300">Retry backoff</p>
+        <span class="font-mono text-xs text-emerald-400">PASS</span>
+      </div>
+      <ul class="text-xs text-slate-500 space-y-1">
+        <li>• 3 fallos → error definitivo</li>
+        <li>• retry_after seteado en cada intento</li>
+        <li>• max_retries=0 → error directo</li>
+      </ul>
+    </div>
+
+    <div class="bg-card border border-border rounded-xl p-5">
+      <div class="flex items-center justify-between mb-2">
+        <p class="text-sm font-medium text-slate-300">VRAM idempotencia</p>
+        <span class="font-mono text-xs text-emerald-400">PASS</span>
+      </div>
+      <ul class="text-xs text-slate-500 space-y-1">
+        <li>• Doble liberación → no resta dos veces</li>
+        <li>• vram_released flag funciona</li>
+      </ul>
+    </div>
+
+    <div class="bg-card border border-border rounded-xl p-5">
+      <div class="flex items-center justify-between mb-2">
+        <p class="text-sm font-medium text-slate-300">Heartbeat monitor</p>
+        <span class="font-mono text-xs text-emerald-400">PASS</span>
+      </div>
+      <ul class="text-xs text-slate-500 space-y-1">
+        <li>• Worker sin heartbeat → job a pending</li>
+        <li>• Worker offline</li>
+        <li>• Zombie complete → 409</li>
+      </ul>
+    </div>
+
+    <div class="bg-card border border-border rounded-xl p-5">
+      <div class="flex items-center justify-between mb-2">
+        <p class="text-sm font-medium text-slate-300">E2E lifecycle</p>
+        <span class="font-mono text-xs text-emerald-400">PASS</span>
+      </div>
+      <ul class="text-xs text-slate-500 space-y-1">
+        <li>• Create → claim → progress → complete</li>
+        <li>• Estado consultable en cada paso</li>
+        <li>• result disponible al final</li>
+      </ul>
+    </div>
+
+  </div>
+</section>
+
+<div class="max-w-6xl mx-auto px-6"><hr class="border-border"></div>
+
+<!-- NEXT -->
+<section id="next" class="max-w-6xl mx-auto px-6 py-16">
+  <h2 class="text-2xl font-bold text-white mb-2">Qué sigue — Fase 2</h2>
+  <p class="text-slate-400 mb-8 text-sm">Node Agent en ialab: métricas reales de GPU, workers Python en Docker, primer flujo end-to-end con hardware real.</p>
+
+  <div class="grid md:grid-cols-3 gap-4">
+    <div class="bg-card border border-border rounded-xl p-5">
+      <div class="text-lg mb-2">📡</div>
+      <h4 class="text-sm font-semibold text-slate-200 mb-1">Node Agent</h4>
+      <p class="text-xs text-slate-400">Proceso en ialab que reporta métricas GPU via <code class="text-indigo-300">nvidia-smi</code> cada 10s. Alimenta <code class="text-indigo-300">worker_metrics</code>.</p>
+    </div>
+    <div class="bg-card border border-border rounded-xl p-5">
+      <div class="text-lg mb-2">🐳</div>
+      <h4 class="text-sm font-semibold text-slate-200 mb-1">Worker scaffold Python</h4>
+      <p class="text-xs text-slate-400">Loop de claim en Docker: register → heartbeat → claim → execute → complete. Sin modelo todavía.</p>
+    </div>
+    <div class="bg-card border border-border rounded-xl p-5">
+      <div class="text-lg mb-2">📊</div>
+      <h4 class="text-sm font-semibold text-slate-200 mb-1">vram_free_mb en el claim</h4>
+      <p class="text-xs text-slate-400">El claim filtrará por métricas reales de VRAM libre como pre-filtro antes del ledger.</p>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="border-t border-border mt-8">
+  <div class="max-w-6xl mx-auto px-6 py-8 flex items-center justify-between text-xs text-slate-600">
+    <span class="font-mono">ai-worker-platform · Fase 1 · 2026-06-10</span>
+    <span>Go 1.26 · PostgreSQL 17 · Apache 2.0</span>
+  </div>
+</footer>
+
+<script>
+// ─── State machine ───
+const stateData = {
+  pending: {
+    color: '#6366f1',
+    label: 'pending',
+    description: 'El job está en la cola esperando ser reclamado.',
+    entradas: ['Creado por la app via POST /ai/jobs', 'Reencola por heartbeat timeout del worker', 'Reencola para reintento (retry backoff)'],
+    salidas: ['→ running: un worker ejecuta POST /workers/{id}/claim', '→ cancelled: la app ejecuta POST /ai/jobs/{id}/cancel']
+  },
+  running: {
+    color: '#f59e0b',
+    label: 'running',
+    description: 'Un worker tiene el job asignado y está ejecutando.',
+    entradas: ['Asignado desde pending por un worker (claim)'],
+    salidas: ['→ done: worker reporta PATCH /complete sin error', '→ error: worker reporta PATCH /complete con error (si max_retries agotados)', '→ pending: worker error + retries disponibles, o heartbeat timeout', '→ cancelled: app cancela mientras corre']
+  },
+  done: {
+    color: '#10b981',
+    label: 'done',
+    description: 'Job completado exitosamente. Estado terminal.',
+    entradas: ['Worker reporta PATCH /complete con result'],
+    salidas: ['No hay salidas — estado terminal', 'Webhook disparado si webhook_url configurado']
+  },
+  error: {
+    color: '#ef4444',
+    label: 'error',
+    description: 'Job fallido con reintentos agotados. Estado terminal.',
+    entradas: ['Worker reporta PATCH /complete con error y retry_count = max_retries'],
+    salidas: ['No hay salidas — estado terminal', 'Webhook disparado si webhook_url configurado']
+  },
+  cancelled: {
+    color: '#64748b',
+    label: 'cancelled',
+    description: 'Job cancelado por la app propietaria. Estado terminal.',
+    entradas: ['App llama POST /ai/jobs/{id}/cancel desde pending o running'],
+    salidas: ['No hay salidas — estado terminal', 'VRAM liberada si estaba running', 'Webhook disparado si webhook_url configurado']
+  }
+};
+
+function selectState(state) {
+  const info = stateData[state];
+  document.querySelectorAll('.state-node').forEach(n => n.classList.remove('active'));
+  document.querySelector(`.state-node[data-state="${state}"]`).classList.add('active');
+
+  document.getElementById('stateInfo').innerHTML = `
+    <div class="flex items-center gap-2 mb-3">
+      <span class="w-3 h-3 rounded-full" style="background:${info.color}"></span>
+      <span class="font-mono font-bold text-white">${info.label}</span>
+    </div>
+    <p class="text-sm text-slate-300 mb-4">${info.description}</p>
+    <div class="mb-4">
+      <p class="text-xs font-semibold text-slate-500 mb-2">CÓMO SE LLEGA</p>
+      <ul class="space-y-1">
+        ${info.entradas.map(e => `<li class="text-xs text-slate-400">• ${e}</li>`).join('')}
+      </ul>
+    </div>
+    <div>
+      <p class="text-xs font-semibold text-slate-500 mb-2">POSIBLES SALIDAS</p>
+      <ul class="space-y-1">
+        ${info.salidas.map(s => `<li class="text-xs ${s.startsWith('→') ? 'text-indigo-300' : 'text-slate-500'}">• ${s}</li>`).join('')}
+      </ul>
+    </div>
+  `;
+}
+
+// ─── Tabs ───
+function switchTab(tab, btn) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.add('hidden'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.remove('hidden');
+  btn.classList.add('active');
+}
+
+// ─── Endpoint toggle ───
+function toggleEndpoint(btn) {
+  const panel = btn.nextElementSibling;
+  const chevron = btn.querySelector('.chevron');
+  const isOpen = panel.classList.contains('open');
+  panel.classList.toggle('open', !isOpen);
+  panel.classList.toggle('closed', isOpen);
+  chevron.style.transform = isOpen ? '' : 'rotate(180deg)';
+  if (!isOpen) hljs.highlightAll();
+}
+
+// ─── VRAM demo ───
+let vramReserved = 0;
+const VRAM_TOTAL = 10000;
+const VRAM_PER_JOB = 3000;
+const VRAM_MARGIN = 500;
+let workerCount = 0;
+
+function updateVRAMUI() {
+  const pct = (vramReserved / VRAM_TOTAL) * 100;
+  const bar = document.getElementById('vramBar');
+  const label = document.getElementById('vramLabel');
+  const pctEl = document.getElementById('vramPct');
+
+  bar.style.width = pct + '%';
+  label.textContent = `${vramReserved.toLocaleString()} / ${VRAM_TOTAL.toLocaleString()} MB reservados`;
+  pctEl.textContent = Math.round(pct) + '%';
+
+  if (pct > 70) {
+    bar.className = 'vram-bar h-full rounded-lg bg-amber-500';
+  } else if (pct >= 95) {
+    bar.className = 'vram-bar h-full rounded-lg bg-rose-500';
+  } else {
+    bar.className = 'vram-bar h-full rounded-lg bg-indigo-600';
+  }
+}
+
+function claimVRAM() {
+  const msg = document.getElementById('vramMessage');
+  const available = VRAM_TOTAL - VRAM_MARGIN;
+
+  if (vramReserved + VRAM_PER_JOB > available) {
+    msg.className = 'mt-3 text-xs rounded-lg px-3 py-2 bg-rose-900/40 border border-rose-700/50 text-rose-300';
+    msg.textContent = `✗ CLAIM RECHAZADO — ${vramReserved + VRAM_PER_JOB} MB > ${available} MB disponibles. UPDATE retorna 0 filas, job sigue pending.`;
+    msg.classList.remove('hidden');
+    return;
+  }
+
+  workerCount++;
+  vramReserved += VRAM_PER_JOB;
+  updateVRAMUI();
+  updateWorkerSlots();
+
+  msg.className = 'mt-3 text-xs rounded-lg px-3 py-2 bg-emerald-900/40 border border-emerald-700/50 text-emerald-300';
+  msg.textContent = `✓ Worker-${workerCount} — ${VRAM_PER_JOB.toLocaleString()} MB reservados. Total: ${vramReserved.toLocaleString()} MB`;
+  msg.classList.remove('hidden');
+}
+
+function resetVRAM() {
+  vramReserved = 0;
+  workerCount = 0;
+  updateVRAMUI();
+  updateWorkerSlots();
+  document.getElementById('vramMessage').classList.add('hidden');
+}
+
+function updateWorkerSlots() {
+  const container = document.getElementById('workerSlots');
+  const slots = 5;
+  container.innerHTML = '';
+  for (let i = 1; i <= slots; i++) {
+    const active = i <= workerCount;
+    container.innerHTML += `
+      <div class="rounded-lg border text-center py-2 text-xs font-mono transition-all ${active ? 'bg-indigo-900/50 border-indigo-600 text-indigo-300' : 'bg-surface border-border text-slate-600'}">
+        W-${i}<br><span class="${active ? 'text-indigo-400' : 'text-slate-700'}">${active ? '3k MB' : '—'}</span>
+      </div>`;
+  }
+}
+
+// ─── Retry timeline ───
+function buildRetryTimeline() {
+  const container = document.getElementById('retryTimeline');
+  const events = [
+    { t: 0,   label: 'Fallo #1',  color: 'bg-rose-500',   sub: 'retry_count = 1 · retry_after = +30s' },
+    { t: 30,  label: '+30s',      color: 'bg-amber-500',  sub: 'Job vuelve a pending' },
+    { t: 30,  label: 'Fallo #2',  color: 'bg-rose-500',   sub: 'retry_count = 2 · retry_after = +60s' },
+    { t: 90,  label: '+60s',      color: 'bg-amber-500',  sub: 'Job vuelve a pending' },
+    { t: 90,  label: 'Fallo #3',  color: 'bg-rose-500',   sub: 'retry_count = 3 · retry_after = +120s' },
+    { t: 210, label: '+120s',     color: 'bg-amber-500',  sub: 'Job vuelve a pending' },
+    { t: 210, label: 'Fallo #4',  color: 'bg-slate-500',  sub: 'retry_count = max_retries → status = error' },
+  ];
+
+  const total = 220;
+  container.innerHTML = `
+    <div class="relative h-16 mb-2">
+      <div class="absolute top-6 left-0 right-0 h-0.5 bg-border rounded"></div>
+      ${events.map(e => {
+        const left = (e.t / total) * 100;
+        return `
+          <div class="absolute" style="left:${left}%; transform:translateX(-50%)">
+            <div class="w-3 h-3 rounded-full ${e.color} mx-auto border-2 border-card mt-4"></div>
+            <div class="text-center mt-1 whitespace-nowrap">
+              <p class="text-xs font-mono font-bold text-slate-300">${e.label}</p>
+            </div>
+          </div>`;
+      }).join('')}
+    </div>
+    <div class="grid grid-cols-7 gap-1 mt-2">
+      ${events.map(e => `<div class="text-xs text-slate-600 text-center">${e.sub}</div>`).join('')}
+    </div>`;
+}
+
+// ─── Init ───
+document.addEventListener('DOMContentLoaded', () => {
+  hljs.highlightAll();
+  updateWorkerSlots();
+  updateVRAMUI();
+  buildRetryTimeline();
+});
+</script>
+</body>
+</html>

@@ -1,4 +1,4 @@
-Usando el archivo IMPLEMENTATION_PLAN como única fuente de verdad, genera el backlog detallado exclusivamente para la Fase 1.
+Usando el archivo IMPLEMENTATION_PLAN como única fuente de verdad, genera el backlog detallado exclusivamente para la Fase 2.
 
 Reglas:
 
@@ -7,7 +7,7 @@ No modifiques el plan de implementación.
 No agregues nuevas tecnologías.
 No diseñes fases futuras.
 No crees tareas relacionadas con fases posteriores.
-Limítate estrictamente al alcance definido para la Fase 1.
+Limítate estrictamente al alcance definido para la Fase 2.
 
 Para cada tarea necesito:
 
@@ -28,4 +28,6 @@ Organiza las tareas en orden cronológico de ejecución.
 
 No quiero una nueva arquitectura ni recomendaciones estratégicas.
 
-Quiero únicamente el backlog ejecutable de la Fase 1 para que pueda comenzar a trabajar inmediatamente.
+Quiero únicamente el backlog ejecutable de la Fase 2 para que pueda comenzar a trabajar inmediatamente.
+
+ten en cuenta las RETROSPECTIVES, son tips de cosas que hemos analizado, valida si es buen momento o no de hacer las mejoras que dicen las restrospectives
