@@ -14,6 +14,7 @@ import (
 	"github.com/jeysonjimenez-cmyk/ai-worker-platform/internal/db"
 	jobsh "github.com/jeysonjimenez-cmyk/ai-worker-platform/internal/jobs"
 	"github.com/jeysonjimenez-cmyk/ai-worker-platform/internal/monitor"
+	"github.com/jeysonjimenez-cmyk/ai-worker-platform/internal/retention"
 	workersh "github.com/jeysonjimenez-cmyk/ai-worker-platform/internal/workers"
 	"github.com/jeysonjimenez-cmyk/ai-worker-platform/internal/webhook"
 )
@@ -67,8 +68,9 @@ func main() {
 	mux.Handle("PATCH /ai/jobs/{id}/progress", workerMW(jobsHandler.UpdateProgress))
 	mux.Handle("PATCH /ai/jobs/{id}/complete", workerMW(jobsHandler.Complete))
 
-	// Start heartbeat monitor.
+	// Start heartbeat monitor and retention job.
 	go monitor.Run(ctx, pool)
+	go retention.Run(ctx, pool)
 
 	srv := &http.Server{
 		Addr:    cfg.ListenAddr,

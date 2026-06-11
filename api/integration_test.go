@@ -19,6 +19,7 @@ import (
 
 	"github.com/jeysonjimenez-cmyk/ai-worker-platform/internal/auth"
 	"github.com/jeysonjimenez-cmyk/ai-worker-platform/internal/jobs"
+	"github.com/jeysonjimenez-cmyk/ai-worker-platform/internal/retention"
 	workersh "github.com/jeysonjimenez-cmyk/ai-worker-platform/internal/workers"
 	"github.com/jeysonjimenez-cmyk/ai-worker-platform/internal/webhook"
 )
@@ -151,6 +152,26 @@ CREATE TABLE worker_metrics (
     recorded_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX worker_metrics_lookup_idx ON worker_metrics (worker_id, recorded_at DESC);
+CREATE TABLE worker_metrics_hourly (
+    worker_id       TEXT NOT NULL REFERENCES workers(id),
+    hour            TIMESTAMPTZ NOT NULL,
+    gpu_util_avg    INT,
+    gpu_util_max    INT,
+    vram_used_avg   INT,
+    vram_used_max   INT,
+    vram_free_avg   INT,
+    vram_free_min   INT,
+    temperature_avg INT,
+    temperature_max INT,
+    power_avg       INT,
+    power_max       INT,
+    cpu_avg         INT,
+    cpu_max         INT,
+    ram_avg         FLOAT,
+    ram_max         FLOAT,
+    sample_count    INT NOT NULL,
+    PRIMARY KEY (worker_id, hour)
+);
 `
 	if _, err := pool.Exec(ctx, schema); err != nil {
 		t.Fatalf("apply schema: %v", err)
@@ -1121,5 +1142,164 @@ func TestIngestMetrics_NoGPUFields(t *testing.T) {
 	pool.QueryRow(context.Background(), `SELECT gpu_util_pct FROM worker_metrics WHERE worker_id = 'w-nogpu'`).Scan(&gpuUtil)
 	if gpuUtil != nil {
 		t.Errorf("expected gpu_util_pct to be NULL, got %v", *gpuUtil)
+	}
+}
+
+// ─── T2.11 retention compact ───
+
+func seedMetricsAt(t *testing.T, pool *pgxpool.Pool, workerID string, recordedAt time.Time, n int) {
+	t.Helper()
+	ctx := context.Background()
+	for i := range n {
+		_, err := pool.Exec(ctx, `
+			INSERT INTO worker_metrics
+				(worker_id, gpu_util_pct, vram_used_mb, vram_free_mb,
+				 temperature_c, power_w, cpu_pct, ram_used_gb, recorded_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+			workerID,
+			40+i, 8000, 8000,
+			70, 150, 30, 12.0,
+			recordedAt.Add(time.Duration(i)*time.Minute),
+		)
+		if err != nil {
+			t.Fatalf("seed metric: %v", err)
+		}
+	}
+}
+
+func TestRetentionCompact_OldRowsAggregated(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	// Register a worker (no GPU needed for this test).
+	pool.Exec(ctx, `INSERT INTO workers (id, hostname, status, capabilities, api_key)
+		VALUES ('w-ret','h','online','{}','wk-ret')`)
+
+	// Seed 6 rows in a single hour, 10 days ago → must be compacted.
+	old := time.Now().UTC().Add(-10 * 24 * time.Hour).Truncate(time.Hour)
+	seedMetricsAt(t, pool, "w-ret", old, 6)
+
+	// Seed 3 rows from 1 day ago → must NOT be touched.
+	recent := time.Now().UTC().Add(-1 * 24 * time.Hour)
+	seedMetricsAt(t, pool, "w-ret", recent, 3)
+
+	if err := retention.Compact(ctx, pool); err != nil {
+		t.Fatalf("compact: %v", err)
+	}
+
+	// Old raw rows must be gone.
+	var oldCount int
+	pool.QueryRow(ctx, `SELECT count(*) FROM worker_metrics WHERE worker_id='w-ret' AND recorded_at < now() - '7 days'::interval`).Scan(&oldCount)
+	if oldCount != 0 {
+		t.Errorf("expected 0 old raw rows after compact, got %d", oldCount)
+	}
+
+	// Recent raw rows must be untouched.
+	var recentCount int
+	pool.QueryRow(ctx, `SELECT count(*) FROM worker_metrics WHERE worker_id='w-ret' AND recorded_at >= now() - '7 days'::interval`).Scan(&recentCount)
+	if recentCount != 3 {
+		t.Errorf("expected 3 recent raw rows untouched, got %d", recentCount)
+	}
+
+	// One hourly aggregate must exist with sample_count = 6.
+	var hourCount, sampleCount int
+	pool.QueryRow(ctx, `SELECT count(*), COALESCE(SUM(sample_count), 0) FROM worker_metrics_hourly WHERE worker_id='w-ret'`).Scan(&hourCount, &sampleCount)
+	if hourCount != 1 {
+		t.Errorf("expected 1 hourly aggregate, got %d", hourCount)
+	}
+	if sampleCount != 6 {
+		t.Errorf("expected sample_count=6, got %d", sampleCount)
+	}
+}
+
+func TestRetentionCompact_Idempotent(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	pool.Exec(ctx, `INSERT INTO workers (id, hostname, status, capabilities, api_key)
+		VALUES ('w-idem2','h','online','{}','wk-idem2')`)
+
+	old := time.Now().UTC().Add(-10 * 24 * time.Hour).Truncate(time.Hour)
+	seedMetricsAt(t, pool, "w-idem2", old, 4)
+
+	// Run twice — second run must not duplicate aggregates or error.
+	if err := retention.Compact(ctx, pool); err != nil {
+		t.Fatalf("compact run 1: %v", err)
+	}
+	if err := retention.Compact(ctx, pool); err != nil {
+		t.Fatalf("compact run 2: %v", err)
+	}
+
+	var hourCount int
+	pool.QueryRow(ctx, `SELECT count(*) FROM worker_metrics_hourly WHERE worker_id='w-idem2'`).Scan(&hourCount)
+	if hourCount != 1 {
+		t.Errorf("idempotency: expected 1 hourly row, got %d", hourCount)
+	}
+
+	var rawCount int
+	pool.QueryRow(ctx, `SELECT count(*) FROM worker_metrics WHERE worker_id='w-idem2'`).Scan(&rawCount)
+	if rawCount != 0 {
+		t.Errorf("idempotency: expected 0 raw rows, got %d", rawCount)
+	}
+}
+
+func TestRetentionCompact_MultipleHours(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	pool.Exec(ctx, `INSERT INTO workers (id, hostname, status, capabilities, api_key)
+		VALUES ('w-mh','h','online','{}','wk-mh')`)
+
+	// Seed rows in 3 distinct hours, all 10+ days old.
+	base := time.Now().UTC().Add(-10 * 24 * time.Hour).Truncate(time.Hour)
+	for h := range 3 {
+		seedMetricsAt(t, pool, "w-mh", base.Add(time.Duration(h)*time.Hour), 2)
+	}
+
+	if err := retention.Compact(ctx, pool); err != nil {
+		t.Fatalf("compact: %v", err)
+	}
+
+	var hourCount int
+	pool.QueryRow(ctx, `SELECT count(*) FROM worker_metrics_hourly WHERE worker_id='w-mh'`).Scan(&hourCount)
+	if hourCount != 3 {
+		t.Errorf("expected 3 hourly aggregates (one per hour), got %d", hourCount)
+	}
+
+	var rawCount int
+	pool.QueryRow(ctx, `SELECT count(*) FROM worker_metrics WHERE worker_id='w-mh'`).Scan(&rawCount)
+	if rawCount != 0 {
+		t.Errorf("expected 0 raw rows after compact, got %d", rawCount)
+	}
+}
+
+func TestRetentionCompact_NothingToDo(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	pool.Exec(ctx, `INSERT INTO workers (id, hostname, status, capabilities, api_key)
+		VALUES ('w-noop','h','online','{}','wk-noop')`)
+
+	// Only recent rows — compact must be a no-op.
+	seedMetricsAt(t, pool, "w-noop", time.Now().UTC().Add(-1*time.Hour), 5)
+
+	if err := retention.Compact(ctx, pool); err != nil {
+		t.Fatalf("compact: %v", err)
+	}
+
+	var rawCount int
+	pool.QueryRow(ctx, `SELECT count(*) FROM worker_metrics WHERE worker_id='w-noop'`).Scan(&rawCount)
+	if rawCount != 5 {
+		t.Errorf("expected 5 raw rows untouched, got %d", rawCount)
+	}
+
+	var hourCount int
+	pool.QueryRow(ctx, `SELECT count(*) FROM worker_metrics_hourly WHERE worker_id='w-noop'`).Scan(&hourCount)
+	if hourCount != 0 {
+		t.Errorf("expected 0 hourly aggregates for recent-only data, got %d", hourCount)
 	}
 }
