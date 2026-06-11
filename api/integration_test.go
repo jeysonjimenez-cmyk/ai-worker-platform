@@ -172,7 +172,7 @@ func buildServer(t *testing.T, pool *pgxpool.Pool) *httptest.Server {
 	t.Helper()
 	dispatcher := webhook.New()
 	jobsHandler := jobs.NewHandler(pool, dispatcher)
-	workersHandler := workersh.NewHandler(pool, 0) // no vram margin for tests
+	workersHandler := workersh.NewHandler(pool, 0, 0) // no vram margin for tests
 
 	mux := http.NewServeMux()
 	appMW := func(h http.HandlerFunc) http.Handler { return auth.RequireApp(pool, h) }

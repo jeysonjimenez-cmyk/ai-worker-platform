@@ -35,7 +35,7 @@ func main() {
 
 	dispatcher := webhook.New()
 	jobsHandler := jobsh.NewHandler(pool, dispatcher)
-	workersHandler := workersh.NewHandler(pool, cfg.VRAMMarginMB)
+	workersHandler := workersh.NewHandler(pool, cfg.VRAMMarginMB, cfg.VRAMDriftMarginMB)
 
 	mux := http.NewServeMux()
 

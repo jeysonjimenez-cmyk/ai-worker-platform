@@ -15,12 +15,13 @@ import (
 )
 
 type Handler struct {
-	pool         *pgxpool.Pool
-	vramMarginMB int
+	pool              *pgxpool.Pool
+	vramMarginMB      int
+	vramDriftMarginMB int
 }
 
-func NewHandler(pool *pgxpool.Pool, vramMarginMB int) *Handler {
-	return &Handler{pool: pool, vramMarginMB: vramMarginMB}
+func NewHandler(pool *pgxpool.Pool, vramMarginMB, vramDriftMarginMB int) *Handler {
+	return &Handler{pool: pool, vramMarginMB: vramMarginMB, vramDriftMarginMB: vramDriftMarginMB}
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -178,7 +179,7 @@ func (h *Handler) IngestMetrics(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err := IngestMetrics(r.Context(), h.pool, workerID, req.Samples); err != nil {
+	if err := IngestMetrics(r.Context(), h.pool, workerID, req.Samples, h.vramDriftMarginMB); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

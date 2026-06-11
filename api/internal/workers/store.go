@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -275,7 +276,8 @@ type MetricSample struct {
 
 // IngestMetrics writes a batch of metric samples for a worker.
 // recorded_at comes from the client (capture time), not the server clock.
-func IngestMetrics(ctx context.Context, pool *pgxpool.Pool, workerID string, samples []MetricSample) error {
+// After persisting, it logs a warning if vram_free_mb deviates from the ledger by more than driftMarginMB.
+func IngestMetrics(ctx context.Context, pool *pgxpool.Pool, workerID string, samples []MetricSample, driftMarginMB int) error {
 	if len(samples) == 0 {
 		return nil
 	}
@@ -299,7 +301,59 @@ func IngestMetrics(ctx context.Context, pool *pgxpool.Pool, workerID string, sam
 			return fmt.Errorf("insert metric: %w", err)
 		}
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	checkVRAMDrift(ctx, pool, workerID, samples, driftMarginMB)
+	return nil
+}
+
+// vramDriftExceeded reports whether the absolute difference between the ledger-predicted
+// free VRAM and the hardware-reported value exceeds the margin.
+func vramDriftExceeded(ledgerFreeMB, reportedFreeMB, marginMB int) bool {
+	diff := ledgerFreeMB - reportedFreeMB
+	if diff < 0 {
+		diff = -diff
+	}
+	return diff > marginMB
+}
+
+// checkVRAMDrift logs a warning if the most recent vram_free_mb in the batch diverges
+// from the ledger prediction (vram_total_mb - vram_reserved_mb) by more than marginMB.
+// Best-effort: silently skips if the worker has no GPU or the ledger row is missing.
+func checkVRAMDrift(ctx context.Context, pool *pgxpool.Pool, workerID string, samples []MetricSample, marginMB int) {
+	var reportedFree *int
+	for i := len(samples) - 1; i >= 0; i-- {
+		if samples[i].VRAMFreeMB != nil {
+			reportedFree = samples[i].VRAMFreeMB
+			break
+		}
+	}
+	if reportedFree == nil {
+		return
+	}
+
+	var gpuID string
+	var vramTotal, vramReserved int
+	err := pool.QueryRow(ctx, `
+		SELECT g.id, g.vram_total_mb, g.vram_reserved_mb
+		FROM workers w
+		JOIN gpus g ON g.id = w.gpu_id
+		WHERE w.id = $1`, workerID,
+	).Scan(&gpuID, &vramTotal, &vramReserved)
+	if err != nil {
+		return
+	}
+
+	ledgerFree := vramTotal - vramReserved
+	if vramDriftExceeded(ledgerFree, *reportedFree, marginMB) {
+		diff := ledgerFree - *reportedFree
+		if diff < 0 {
+			diff = -diff
+		}
+		log.Printf("WARN vram drift: gpu_id=%s ledger_free_mb=%d reported_free_mb=%d delta_mb=%d margin_mb=%d",
+			gpuID, ledgerFree, *reportedFree, diff, marginMB)
+	}
 }
 
 // TimedOutWorkers returns worker IDs whose last_heartbeat is older than timeout.
