@@ -8,6 +8,7 @@
 | Servicio | Gestión | Puerto | Notas |
 |---|---|---|---|
 | Node Agent | systemd | — | Reporta métricas al VPS cada 10s |
+| worker-echo | Docker Compose | — | Scaffold de referencia (F3); `network_mode: host`, sin puerto propio |
 | Servidor de archivos | Docker Compose | `8001` (interno) | Archivos de jobs; solo accesible desde VPS vía Tailscale |
 | worker-whisper | Docker Compose | — | Permanente; transcripción CUDA ~10000 MB |
 | worker-llm | Docker Compose | — | Permanente; traducción + llm_chat ~4000 MB |
@@ -166,6 +167,75 @@ systemctl status network-online.target   # el unit depende de la red
 ```
 
 Si la red Tailscale tarda en establecerse, el agente puede fallar en el registro y ser reiniciado por systemd (`RestartSec=5`). Es transitorio; tras unos intentos se conecta solo.
+
+---
+
+## Workers (Docker Compose)
+
+Los workers de inferencia (F3+) corren en Docker, no en systemd. Todos usan el scaffold
+`worker_base` (ver `workers/README.md` para escribir uno nuevo). El primero es `worker-echo`,
+el worker de ejemplo del scaffold.
+
+Compose: `deploy/ialab/docker-compose.yml`. Los contenedores usan `network_mode: host` para
+alcanzar la API del VPS y el endpoint `/metrics` local vía Tailscale; **no publican puertos**.
+
+### Primer despliegue de `worker-echo`
+
+```bash
+# 1. Crear el archivo de entorno (las credenciales no van en la imagen)
+sudo cp <repo>/deploy/ialab/worker-echo.env.example /etc/ai-platform/worker-echo.env
+sudo $EDITOR /etc/ai-platform/worker-echo.env   # rellenar WORKER_KEY, WORKER_ADMIN_KEY, WORKER_ID, ...
+
+# 2. Build + arranque
+docker compose -f <repo>/deploy/ialab/docker-compose.yml up --build -d worker-echo
+```
+
+El `WORKER_KEY` (worker key) se obtiene registrando el worker con el `ADMIN_KEY`, igual que el
+Node Agent. `WORKER_ID` debe ser **estable** (no cambiar entre arranques) — el registro es
+idempotente por ese id.
+
+### Operación
+
+```bash
+# Estado
+docker compose -f <repo>/deploy/ialab/docker-compose.yml ps
+
+# Logs (en vivo)
+docker compose -f <repo>/deploy/ialab/docker-compose.yml logs -f worker-echo
+
+# Reiniciar / parar / arrancar
+docker compose -f <repo>/deploy/ialab/docker-compose.yml restart worker-echo
+docker compose -f <repo>/deploy/ialab/docker-compose.yml stop worker-echo
+docker compose -f <repo>/deploy/ialab/docker-compose.yml up -d worker-echo
+```
+
+Ver `workers/README.md` para la tabla completa de variables de entorno del worker.
+
+### Comportamiento ante shutdown
+
+`docker compose stop/restart` envía SIGTERM: el worker deja de reclamar y sale limpio. Si tenía
+un job en curso que no alcanza a terminar antes del SIGKILL de Docker, **el job vuelve a
+`pending` a los ≤90s** por el timeout de heartbeat del VPS (no hay endpoint cliente de "return to
+pending"). Otro worker lo retoma; si este lo completa tarde, recibe 409 y lo descarta (fencing).
+
+### Troubleshooting — el worker no reclama jobs
+
+```bash
+# 1. ¿El contenedor está arriba?
+docker compose -f <repo>/deploy/ialab/docker-compose.yml ps
+
+# 2. Logs: ¿se registró y está haciendo long-poll?
+docker compose -f <repo>/deploy/ialab/docker-compose.yml logs --tail 50 worker-echo
+
+# 3. ¿La API responde desde ialab vía Tailscale?
+curl -s http://100.106.192.45:8081/healthz
+```
+
+Causas frecuentes:
+- Falta una variable de entorno requerida → el contenedor arranca y muere en loop (revisar logs: `required env var ... is not set`).
+- `WORKER_KEY`/`WORKER_ADMIN_KEY` inválidos → `401`/`403` en el registro o el claim.
+- `WORKER_CAPABILITIES` sin el service del job → el claim nunca devuelve trabajo (filtra por capabilities).
+- `WORKER_ID` distinto en cada arranque → workers duplicados en la tabla `workers` (usar un id estable).
 
 ---
 

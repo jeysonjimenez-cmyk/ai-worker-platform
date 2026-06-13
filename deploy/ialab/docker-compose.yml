@@ -1,0 +1,17 @@
+services:
+  worker-echo:
+    build:
+      context: ../../workers
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      # Primary location (legacy): /etc/ai-platform/worker-echo.env (root-owned)
+      # Fallback location: ~/.config/ai-platform/worker-echo.env (user-writable)
+      # worker_base/config.py enforces required vars at startup.
+      - path: /etc/ai-platform/worker-echo.env
+        required: false
+      - path: ${HOME}/.config/ai-platform/worker-echo.env
+        required: false
+    network_mode: host
+    # network_mode: host gives the container access to Tailscale (tailscale0 interface).
+    # ialab never exposes worker containers to the internet — Tailscale ACLs enforce this.

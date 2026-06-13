@@ -278,6 +278,50 @@ func Cancel(ctx context.Context, pool *pgxpool.Pool, p CancelParams) (string, er
 	return "cancelled", tx.Commit(ctx)
 }
 
+type LogEntry struct {
+	Level   string
+	Message string
+}
+
+// IngestLogs inserts log lines for a job, with fencing.
+// Returns false if the job is not running or not owned by workerID (→ 409).
+func IngestLogs(ctx context.Context, pool *pgxpool.Pool, jobID, workerID string, entries []LogEntry) (bool, error) {
+	var owner string
+	err := pool.QueryRow(ctx,
+		`SELECT worker_id FROM jobs WHERE id = $1 AND status = 'running'`, jobID,
+	).Scan(&owner)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("check job owner: %w", err)
+	}
+	if owner != workerID {
+		return false, nil
+	}
+
+	levels := make([]string, len(entries))
+	messages := make([]string, len(entries))
+	jobIDs := make([]string, len(entries))
+	for i, e := range entries {
+		jobIDs[i] = jobID
+		levels[i] = e.Level
+		if levels[i] == "" {
+			levels[i] = "info"
+		}
+		messages[i] = e.Message
+	}
+	_, err = pool.Exec(ctx, `
+		INSERT INTO job_logs (job_id, level, message)
+		SELECT unnest($1::text[]), unnest($2::text[]), unnest($3::text[])`,
+		jobIDs, levels, messages,
+	)
+	if err != nil {
+		return false, fmt.Errorf("insert logs: %w", err)
+	}
+	return true, nil
+}
+
 // RequeueTimedOutJob moves a running job back to pending and releases VRAM.
 // Called by the heartbeat monitor.
 func RequeueTimedOutJob(ctx context.Context, tx pgx.Tx, jobID string) error {

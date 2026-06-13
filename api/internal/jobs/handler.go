@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -237,6 +238,48 @@ func (h *Handler) Complete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, job)
+}
+
+type ingestLogsRequest struct {
+	Logs []struct {
+		Level   string `json:"level"`
+		Message string `json:"message"`
+	} `json:"logs"`
+}
+
+func (h *Handler) IngestLogs(w http.ResponseWriter, r *http.Request) {
+	workerID := auth.GetWorkerID(r)
+	jobID := r.PathValue("id")
+
+	var req ingestLogsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "invalid json")
+		return
+	}
+	if len(req.Logs) == 0 {
+		writeError(w, http.StatusUnprocessableEntity, "logs must not be empty")
+		return
+	}
+
+	entries := make([]LogEntry, len(req.Logs))
+	for i, l := range req.Logs {
+		if l.Message == "" {
+			writeError(w, http.StatusUnprocessableEntity, fmt.Sprintf("logs[%d]: message is required", i))
+			return
+		}
+		entries[i] = LogEntry{Level: l.Level, Message: l.Message}
+	}
+
+	owned, err := IngestLogs(r.Context(), h.pool, jobID, workerID, entries)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !owned {
+		writeError(w, http.StatusConflict, "job not owned by this worker")
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]int{"inserted": len(entries)})
 }
 
 func (h *Handler) Cancel(w http.ResponseWriter, r *http.Request) {

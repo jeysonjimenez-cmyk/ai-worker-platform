@@ -1,11 +1,23 @@
 [project]
 name = "workers"
 version = "0.1.0"
-description = "Add your description here"
+description = "AI Worker Platform — worker scaffold and workers"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "httpx>=0.28.0",
+]
+
+[project.scripts]
+worker-echo = "worker_echo:main"
 
 [dependency-groups]
 dev = [
+    "pytest>=8.0.0",
     "ruff>=0.15.16",
 ]
+
+[tool.ruff]
+line-length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

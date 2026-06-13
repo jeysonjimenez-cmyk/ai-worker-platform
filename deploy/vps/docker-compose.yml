@@ -26,7 +26,8 @@ services:
       ADMIN_API_KEY: ${ADMIN_API_KEY}
       LISTEN_ADDR: ":8080"
     ports:
-      - "127.0.0.1:8081:8080"
+      # Tailscale IP — accessible from ialab workers, not exposed to internet
+      - "100.106.192.45:8081:8080"
     depends_on:
       postgres:
         condition: service_healthy

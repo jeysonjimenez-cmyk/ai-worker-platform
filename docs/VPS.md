@@ -30,6 +30,43 @@ docker compose (deploy/vps/docker-compose.yml)
 | `/home/ubuntu/ai-worker-platform/deploy/vps` | Docker Compose + `.env` |
 | `/opt/backups/postgres` | Dumps diarios de PostgreSQL (retención 7 días) |
 
+## Despliegue de la API
+
+### Desde la máquina de desarrollo (recomendado)
+
+```bash
+# Sincroniza el repo, reconstruye la imagen y aplica migraciones
+make deploy
+```
+
+El target hace `rsync` al VPS y luego llama a `deploy/vps/deploy.sh --no-pull` vía SSH.
+
+### Directamente en el VPS (si ya estás en SSH)
+
+```bash
+cd ~/ai-worker-platform
+git pull
+bash deploy/vps/deploy.sh --no-pull
+```
+
+O con pull incluido (si el repo en el VPS está desactualizado):
+
+```bash
+bash ~/ai-worker-platform/deploy/vps/deploy.sh
+```
+
+El script:
+1. Valida que el `.env` existe y contiene todas las variables requeridas — aborta con error claro si falta alguna.
+2. (Opcional) `git pull` para actualizar el código.
+3. `docker compose down` + `docker compose up --build -d` para reconstruir la imagen.
+4. Espera a que `/healthz` responda antes de continuar.
+5. Aplica las migraciones pendientes con `migrate up`.
+
+### Variables requeridas en `.env`
+
+Ver `deploy/vps/.env.example`. El `.env` real vive solo en el VPS, nunca versionado.
+El script aborta con el listado de variables faltantes si el `.env` está incompleto.
+
 ## Comandos de operación
 
 ```bash

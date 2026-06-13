@@ -210,6 +210,7 @@ func buildServer(t *testing.T, pool *pgxpool.Pool) *httptest.Server {
 	mux.Handle("POST /workers/{id}/metrics", workerMW(workersHandler.IngestMetrics))
 	mux.Handle("PATCH /ai/jobs/{id}/progress", workerMW(jobsHandler.UpdateProgress))
 	mux.Handle("PATCH /ai/jobs/{id}/complete", workerMW(jobsHandler.Complete))
+	mux.Handle("POST /ai/jobs/{id}/logs", workerMW(jobsHandler.IngestLogs))
 
 	return httptest.NewServer(mux)
 }
@@ -1411,4 +1412,126 @@ func TestMetricsBufferFlushPreservesTimestamps(t *testing.T) {
 	//   — consecutive rows with delta > threshold indicate the gap.
 	// We verify this detection query works by checking the pre/post boundary.
 	_ = outageMinutes // used only in the runbook SQL
+}
+
+// ─── T3.6: job log ingestion ───
+
+func TestIngestLogs_OwnerInserts(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	srv := buildServer(t, pool)
+	defer srv.Close()
+
+	caps := map[string]any{"services": []string{"echo"}, "cuda": false, "vram_total_mb": 0}
+	registerWorker(t, srv, "w-log", "wk-log", caps)
+
+	cResp := post(t, srv, "/ai/jobs", "X-App-Key", appKey, map[string]any{
+		"service": "echo", "requirements": map[string]int{"min_vram_mb": 0},
+	})
+	job := decodeJob(t, cResp)
+	jobID := job["id"].(string)
+
+	claimResp := post(t, srv, "/workers/w-log/claim", "X-Worker-Key", "wk-log", nil)
+	if claimResp.StatusCode != http.StatusOK {
+		t.Fatalf("claim: expected 200, got %d", claimResp.StatusCode)
+	}
+	claimResp.Body.Close()
+
+	logResp := post(t, srv, "/ai/jobs/"+jobID+"/logs", "X-Worker-Key", "wk-log", map[string]any{
+		"logs": []map[string]string{
+			{"level": "info", "message": "hello from worker"},
+			{"level": "debug", "message": "second line"},
+		},
+	})
+	if logResp.StatusCode != http.StatusCreated {
+		t.Fatalf("ingest logs: expected 201, got %d", logResp.StatusCode)
+	}
+	var result map[string]any
+	json.NewDecoder(logResp.Body).Decode(&result)
+	logResp.Body.Close()
+	if result["inserted"] != float64(2) {
+		t.Errorf("expected inserted=2, got %v", result["inserted"])
+	}
+
+	var count int
+	pool.QueryRow(context.Background(),
+		`SELECT count(*) FROM job_logs WHERE job_id = $1`, jobID,
+	).Scan(&count)
+	if count != 2 {
+		t.Errorf("expected 2 rows in job_logs, got %d", count)
+	}
+}
+
+func TestIngestLogs_Fencing_WrongWorker(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	srv := buildServer(t, pool)
+	defer srv.Close()
+
+	caps := map[string]any{"services": []string{"echo"}, "cuda": false, "vram_total_mb": 0}
+	registerWorker(t, srv, "w-owner", "wk-owner", caps)
+	registerWorker(t, srv, "w-other", "wk-other", caps)
+
+	cResp := post(t, srv, "/ai/jobs", "X-App-Key", appKey, map[string]any{
+		"service": "echo", "requirements": map[string]int{"min_vram_mb": 0},
+	})
+	job := decodeJob(t, cResp)
+	jobID := job["id"].(string)
+
+	// w-owner claims the job.
+	post(t, srv, "/workers/w-owner/claim", "X-Worker-Key", "wk-owner", nil).Body.Close()
+
+	// w-other tries to log to the same job — fencing → 409.
+	logResp := post(t, srv, "/ai/jobs/"+jobID+"/logs", "X-Worker-Key", "wk-other", map[string]any{
+		"logs": []map[string]string{{"message": "steal attempt"}},
+	})
+	if logResp.StatusCode != http.StatusConflict {
+		t.Errorf("fencing: expected 409, got %d", logResp.StatusCode)
+	}
+	logResp.Body.Close()
+}
+
+func TestIngestLogs_MissingWorkerKey(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	srv := buildServer(t, pool)
+	defer srv.Close()
+
+	req, _ := http.NewRequest("POST", srv.URL+"/ai/jobs/any-id/logs",
+		strings.NewReader(`{"logs":[{"message":"x"}]}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", resp.StatusCode)
+	}
+}
+
+func TestIngestLogs_InvalidPayload(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	srv := buildServer(t, pool)
+	defer srv.Close()
+
+	caps := map[string]any{"services": []string{"echo"}, "cuda": false, "vram_total_mb": 0}
+	registerWorker(t, srv, "w-inv", "wk-inv", caps)
+
+	// Empty logs array → 422.
+	resp := post(t, srv, "/ai/jobs/any-id/logs", "X-Worker-Key", "wk-inv", map[string]any{"logs": []any{}})
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("empty logs: expected 422, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	// Missing message field → 422.
+	resp2 := post(t, srv, "/ai/jobs/any-id/logs", "X-Worker-Key", "wk-inv", map[string]any{
+		"logs": []map[string]string{{"level": "info"}},
+	})
+	if resp2.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("missing message: expected 422, got %d", resp2.StatusCode)
+	}
+	resp2.Body.Close()
 }

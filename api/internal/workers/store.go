@@ -134,6 +134,10 @@ func Claim(ctx context.Context, pool *pgxpool.Pool, workerID string, vramMarginM
 	var caps capabilities
 	json.Unmarshal(w.Capabilities, &caps)
 
+	if len(caps.Services) == 0 {
+		return nil, nil
+	}
+
 	// Build services filter as a JSON array for the query.
 	servicesJSON, _ := json.Marshal(caps.Services)
 

@@ -67,6 +67,7 @@ func main() {
 	mux.Handle("POST /workers/{id}/metrics", workerMW(workersHandler.IngestMetrics))
 	mux.Handle("PATCH /ai/jobs/{id}/progress", workerMW(jobsHandler.UpdateProgress))
 	mux.Handle("PATCH /ai/jobs/{id}/complete", workerMW(jobsHandler.Complete))
+	mux.Handle("POST /ai/jobs/{id}/logs", workerMW(jobsHandler.IngestLogs))
 
 	// Start heartbeat monitor and retention job.
 	go monitor.Run(ctx, pool)
