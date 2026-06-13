@@ -31,3 +31,23 @@ No quiero una nueva arquitectura ni recomendaciones estratégicas.
 Quiero únicamente el backlog ejecutable de la Fase 2 para que pueda comenzar a trabajar inmediatamente.
 
 ten en cuenta las RETROSPECTIVES, son tips de cosas que hemos analizado, valida si es buen momento o no de hacer las mejoras que dicen las restrospectives
+
+
+
+--------------------------------------
+
+
+Implementa T2.12. y luego T2.13
+
+Contexto:
+- Arquitectura congelada.
+- IMPLEMENTATION_PLAN es la fuente de verdad.
+- BACKLOG_F2 es la fuente de verdad para la tarea.
+- No implementes ninguna otra tarea.
+- Incluye tests.
+- Mantén el estilo existente del repositorio.
+
+Al finalizar:
+- Resume los cambios realizados.
+- Enumera los archivos modificados.
+- Indica riesgos o deuda técnica detectada.

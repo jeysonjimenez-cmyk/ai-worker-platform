@@ -38,8 +38,16 @@ node-agent.service     — Node Agent (fuera de Docker, acceso directo a nvidia-
 # Estado del Node Agent
 systemctl status node-agent
 
-# Logs del Node Agent
+# Logs del Node Agent (en vivo)
 journalctl -u node-agent -f
+
+# Logs desde una fecha concreta
+journalctl -u node-agent --since "2026-06-11 10:00:00"
+
+# Reiniciar / parar / arrancar el agente
+sudo systemctl restart node-agent
+sudo systemctl stop node-agent
+sudo systemctl start node-agent
 
 # Estado de workers
 docker compose -f /opt/ai-platform/workers/docker-compose.yml ps
@@ -49,7 +57,117 @@ nvidia-smi
 
 # Verificar GPU desde Docker
 docker run --rm --gpus all nvidia/cuda:12.8.0-base-ubuntu24.04 nvidia-smi
+
+# Consultar la última muestra de métricas del agente (endpoint local)
+curl http://100.103.55.110:9100/metrics
 ```
+
+## Instalación del Node Agent (desde cero)
+
+Ejecutar en ialab desde la raíz del repo (clonar o copiar primero si es la primera vez):
+
+```bash
+# 1. Clonar/actualizar el repo en ialab
+git clone <repo_url> ~/ai-worker-platform   # primera vez
+# o: cd ~/ai-worker-platform && git pull
+
+# 2. Ejecutar el instalador (idempotente — seguro de volver a correr para actualizar)
+bash deploy/ialab/install-agent.sh
+```
+
+El script:
+- Copia `agent/` a `/opt/ai-platform/agent`
+- Sincroniza dependencias Python con `uv sync --frozen`
+- Crea `/etc/ai-platform/agent.env` desde la plantilla **solo si no existe** (las credenciales reales sobreviven re-instalaciones)
+- Instala y habilita `node-agent.service` en systemd
+
+**Primera instalación:** editar el archivo de entorno antes de iniciar el servicio:
+
+```bash
+sudo $EDITOR /etc/ai-platform/agent.env   # rellenar AGENT_API_KEY, AGENT_ADMIN_KEY, etc.
+sudo systemctl restart node-agent
+```
+
+### Variables de entorno del agente
+
+Archivo: `/etc/ai-platform/agent.env` (chmod 600, solo root). Plantilla en `deploy/ialab/agent.env.example`.
+
+| Variable | Requerida | Descripción | Ejemplo |
+|---|---|---|---|
+| `AGENT_API_URL` | Sí | URL base de la API en el VPS (vía Tailscale) | `http://100.106.192.45:8081` |
+| `AGENT_API_KEY` | Sí | Worker key para ingesta de métricas (`X-Worker-Key`) | `wk-...` |
+| `AGENT_ADMIN_KEY` | Sí | Admin key para el registro inicial al arrancar (`X-Admin-Key`) | `adm-...` |
+| `AGENT_WORKER_ID` | Sí | ID único del nodo en la plataforma | `w-ialab` |
+| `AGENT_METRICS_BIND` | Sí | `host:port` del endpoint local `/metrics` — usar IP Tailscale de ialab, nunca `0.0.0.0` | `100.103.55.110:9100` |
+| `AGENT_INTERVAL_SEC` | No | Intervalo de reporte en segundos (default: `10`) | `10` |
+
+El agente falla al arrancar con error claro si falta cualquier variable requerida.
+
+### Endpoint local `/metrics`
+
+El agente expone la última muestra en `http://100.103.55.110:9100/metrics` (JSON).
+Los workers de F3+ consultan esta dirección desde sus contenedores Docker para conocer el estado del nodo sin pasar por el VPS.
+
+## Troubleshooting del Node Agent
+
+### El agente no reporta métricas
+
+```bash
+# 1. Verificar que el servicio está activo
+systemctl status node-agent
+
+# 2. Ver los últimos errores
+journalctl -u node-agent -n 50 --no-pager
+
+# 3. Verificar conectividad al VPS
+curl -s http://100.106.192.45:8081/healthz   # debe responder 200
+
+# 4. Verificar que la API key es válida (debe devolver 401, no timeout)
+curl -s -o /dev/null -w "%{http_code}" http://100.106.192.45:8081/workers/w-ialab/metrics \
+  -H "X-Worker-Key: bad-key" -d '{"samples":[]}'
+
+# 5. Comprobar el archivo de entorno
+sudo cat /etc/ai-platform/agent.env   # verificar que las variables están rellenas
+```
+
+Causas frecuentes:
+- `AGENT_API_KEY` o `AGENT_API_URL` incorrectos → `401`/`403` en logs
+- VPS sin responder → el agente acumula en buffer y reintenta (comportamiento normal, no reiniciar)
+- `uv` no en PATH o dependencias desactualizadas → reinstalar con `bash deploy/ialab/install-agent.sh`
+
+### Warnings de deriva ledger en logs de la API
+
+```bash
+# En el VPS
+docker compose -f ~/ai-worker-platform/deploy/vps/docker-compose.yml logs api | grep "vram drift"
+```
+
+El warning `vram drift exceeded` indica que el VRAM libre reportado por el agente difiere del ledger
+(`vram_total_mb - vram_reserved_mb`) en más de `VRAM_DRIFT_MARGIN_MB` (default: 512 MB).
+
+Causas posibles:
+- Procesos externos ocupan VRAM (Docker, drivers) → normal; ajustar el margen si es constante
+- Bug en la reserva del ledger (jobs no liberados) → revisar `gpus.vram_reserved_mb` en la DB
+
+```sql
+-- Estado del ledger
+SELECT id, vram_total_mb, vram_reserved_mb, vram_total_mb - vram_reserved_mb AS ledger_free_mb
+FROM gpus;
+
+-- Última muestra real del agente
+SELECT vram_free_mb, recorded_at FROM worker_metrics ORDER BY recorded_at DESC LIMIT 1;
+```
+
+### El agente no arranca tras un reinicio de ialab
+
+```bash
+journalctl -u node-agent -b   # logs del boot actual
+systemctl status network-online.target   # el unit depende de la red
+```
+
+Si la red Tailscale tarda en establecerse, el agente puede fallar en el registro y ser reiniciado por systemd (`RestartSec=5`). Es transitorio; tras unos intentos se conecta solo.
+
+---
 
 ## Regla de acceso
 

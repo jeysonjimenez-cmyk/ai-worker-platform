@@ -13,20 +13,23 @@ MIGRATE_BIN ?= migrate
 help:
 	@grep -E '^## ' $(MAKEFILE_LIST) | sed 's/## //' | column -t -s ':'
 
-## build: compile api/ (Go) and validate workers/ syntax (Python)
+## build: compile api/ (Go) and validate Python syntax (workers, agent)
 build:
 	cd api && go build ./...
 	cd workers && uv run ruff check --select E,F --quiet .
+	cd agent && uv run ruff check --select E,F --quiet .
 
-## test: run Go tests and Python tests
+## test: run Go tests and Python tests (workers, agent)
 test:
 	cd api && go test ./...
 	cd workers && uv run python -m pytest --tb=short -q || true
+	cd agent && uv run pytest tests/ --tb=short -q
 
 ## lint: lint Go (vet) and Python (ruff)
 lint:
 	cd api && go vet ./...
 	cd workers && uv run ruff check .
+	cd agent && uv run ruff check .
 
 ## deploy: sync repo to VPS, restart compose, apply pending migrations
 deploy:

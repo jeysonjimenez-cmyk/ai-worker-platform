@@ -14,6 +14,7 @@ import (
 	"github.com/jeysonjimenez-cmyk/ai-worker-platform/internal/db"
 	jobsh "github.com/jeysonjimenez-cmyk/ai-worker-platform/internal/jobs"
 	"github.com/jeysonjimenez-cmyk/ai-worker-platform/internal/monitor"
+	"github.com/jeysonjimenez-cmyk/ai-worker-platform/internal/retention"
 	workersh "github.com/jeysonjimenez-cmyk/ai-worker-platform/internal/workers"
 	"github.com/jeysonjimenez-cmyk/ai-worker-platform/internal/webhook"
 )
@@ -35,7 +36,7 @@ func main() {
 
 	dispatcher := webhook.New()
 	jobsHandler := jobsh.NewHandler(pool, dispatcher)
-	workersHandler := workersh.NewHandler(pool, cfg.VRAMMarginMB)
+	workersHandler := workersh.NewHandler(pool, cfg.VRAMMarginMB, cfg.VRAMDriftMarginMB)
 
 	mux := http.NewServeMux()
 
@@ -63,11 +64,13 @@ func main() {
 	mux.Handle("POST /workers/{id}/heartbeat", workerMW(workersHandler.Heartbeat))
 	mux.Handle("POST /workers/{id}/claim", workerMW(workersHandler.Claim))
 	mux.Handle("POST /workers/{id}/unload-model", workerMW(workersHandler.UnloadModel))
+	mux.Handle("POST /workers/{id}/metrics", workerMW(workersHandler.IngestMetrics))
 	mux.Handle("PATCH /ai/jobs/{id}/progress", workerMW(jobsHandler.UpdateProgress))
 	mux.Handle("PATCH /ai/jobs/{id}/complete", workerMW(jobsHandler.Complete))
 
-	// Start heartbeat monitor.
+	// Start heartbeat monitor and retention job.
 	go monitor.Run(ctx, pool)
+	go retention.Run(ctx, pool)
 
 	srv := &http.Server{
 		Addr:    cfg.ListenAddr,

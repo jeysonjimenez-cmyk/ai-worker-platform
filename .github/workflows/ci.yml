@@ -30,6 +30,18 @@ jobs:
       - run: cd workers && uv sync
       - run: cd workers && uv run ruff check .
 
+  agent:
+    name: Python agent (ruff + pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          working-directory: agent
+      - run: cd agent && uv sync
+      - run: cd agent && uv run ruff check .
+      - run: cd agent && uv run pytest tests/ -q
+
   dashboard:
     name: Dashboard build (Vite)
     runs-on: ubuntu-latest

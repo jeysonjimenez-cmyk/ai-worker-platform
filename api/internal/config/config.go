@@ -3,13 +3,15 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 )
 
 type Config struct {
-	DatabaseURL  string
-	ListenAddr   string
-	AdminAPIKey  string
-	VRAMMarginMB int
+	DatabaseURL       string
+	ListenAddr        string
+	AdminAPIKey       string
+	VRAMMarginMB      int
+	VRAMDriftMarginMB int
 }
 
 func Load() (*Config, error) {
@@ -25,10 +27,17 @@ func Load() (*Config, error) {
 	if addr == "" {
 		addr = ":8080"
 	}
+	driftMargin := 512
+	if s := os.Getenv("VRAM_DRIFT_MARGIN_MB"); s != "" {
+		if v, err := strconv.Atoi(s); err == nil {
+			driftMargin = v
+		}
+	}
 	return &Config{
-		DatabaseURL:  dbURL,
-		ListenAddr:   addr,
-		AdminAPIKey:  adminKey,
-		VRAMMarginMB: 500,
+		DatabaseURL:       dbURL,
+		ListenAddr:        addr,
+		AdminAPIKey:       adminKey,
+		VRAMMarginMB:      500,
+		VRAMDriftMarginMB: driftMargin,
 	}, nil
 }

@@ -3,6 +3,7 @@ package workers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -14,12 +15,13 @@ import (
 )
 
 type Handler struct {
-	pool         *pgxpool.Pool
-	vramMarginMB int
+	pool              *pgxpool.Pool
+	vramMarginMB      int
+	vramDriftMarginMB int
 }
 
-func NewHandler(pool *pgxpool.Pool, vramMarginMB int) *Handler {
-	return &Handler{pool: pool, vramMarginMB: vramMarginMB}
+func NewHandler(pool *pgxpool.Pool, vramMarginMB, vramDriftMarginMB int) *Handler {
+	return &Handler{pool: pool, vramMarginMB: vramMarginMB, vramDriftMarginMB: vramDriftMarginMB}
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -37,6 +39,7 @@ type registerRequest struct {
 	Hostname     string          `json:"hostname"`
 	Capabilities json.RawMessage `json:"capabilities"`
 	APIKey       string          `json:"api_key"`
+	GPUID        *string         `json:"gpu_id,omitempty"`
 }
 
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
@@ -55,6 +58,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		Hostname:     req.Hostname,
 		Capabilities: req.Capabilities,
 		APIKey:       req.APIKey,
+		GPUID:        req.GPUID,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -149,6 +153,37 @@ func (h *Handler) claimWithWait(ctx context.Context, workerID string, waitSec in
 		}
 	}
 	return nil, nil
+}
+
+type metricsRequest struct {
+	Samples []MetricSample `json:"samples"`
+}
+
+func (h *Handler) IngestMetrics(w http.ResponseWriter, r *http.Request) {
+	workerID := auth.GetWorkerID(r)
+	pathID := r.PathValue("id")
+	if workerID != pathID {
+		writeError(w, http.StatusForbidden, "worker id mismatch")
+		return
+	}
+
+	var req metricsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "invalid json: "+err.Error())
+		return
+	}
+	for i, s := range req.Samples {
+		if s.RecordedAt.IsZero() {
+			writeError(w, http.StatusUnprocessableEntity, fmt.Sprintf("samples[%d]: recorded_at is required", i))
+			return
+		}
+	}
+
+	if err := IngestMetrics(r.Context(), h.pool, workerID, req.Samples, h.vramDriftMarginMB); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"inserted": len(req.Samples)})
 }
 
 func (h *Handler) UnloadModel(w http.ResponseWriter, r *http.Request) {

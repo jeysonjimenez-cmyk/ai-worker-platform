@@ -74,6 +74,7 @@ func main() {
 	reg := map[string]any{
 		"id": *workerID, "hostname": "sim-host",
 		"capabilities": caps, "api_key": *workerKey,
+		"gpu_id": "sim-host/gpu-0",
 	}
 	resp, err := do("POST", *baseURL+"/workers/register", *adminKey, "X-Admin-Key", reg)
 	if err != nil || resp.StatusCode != http.StatusOK {
