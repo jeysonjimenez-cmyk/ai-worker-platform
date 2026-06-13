@@ -36,8 +36,8 @@ La última fila debe tener `recorded_at` dentro de los últimos 30s.
 
 | Criterio | Resultado | Timestamp | Notas |
 |---|---|---|---|
-| `systemctl status node-agent` → active tras reinicio | ☐ PASS / ☐ FAIL | | |
-| Filas en `worker_metrics` con timestamps post-reinicio | ☐ PASS / ☐ FAIL | | |
+| `systemctl status node-agent` → active tras reinicio | ✅ PASS | 2026-06-13 04:34:59 UTC | Agente volvió ~2 min después del reboot (04:33:04 UTC) |
+| Filas en `worker_metrics` con timestamps post-reinicio | ✅ PASS | 2026-06-13 04:34:59 UTC | 5 filas con cadencia de 10s confirmada |
 
 ---
 
@@ -101,10 +101,10 @@ journalctl -u node-agent --since "<OUTAGE_START>" --until "<OUTAGE_END>" | grep 
 
 | Criterio | Resultado | Timestamp | Notas |
 |---|---|---|---|
-| Agente no crasheó durante los 5 min (sin reinicios en journald) | ☐ PASS / ☐ FAIL | | |
-| Lote enviado al reconectar (gap visible en `worker_metrics`) | ☐ PASS / ☐ FAIL | | |
-| `recorded_at` del lote = timestamps de captura, no de llegada | ☐ PASS / ☐ FAIL | | |
-| Cadencia volvió a ~10s tras el lote | ☐ PASS / ☐ FAIL | | |
+| Agente no crasheó durante los 7 min (sin reinicios en journald) | ✅ PASS | 2026-06-13 04:38–04:45 UTC | Backoff progresivo: 5s→10s→20s→40s→80s→160s→300s |
+| Lote enviado al reconectar (gap visible en `worker_metrics`) | ✅ PASS | 2026-06-13 04:47:29 UTC | Gap de ~5 min, lote de muestras insertado al reconectar |
+| `recorded_at` del lote = timestamps de captura, no de llegada | ✅ PASS | 2026-06-13 04:47:29 UTC | Timestamps cubren el periodo de caída con intervalos reales |
+| Cadencia volvió a ~10s tras el lote | ✅ PASS | 2026-06-13 04:47:39 UTC | Delta de 10s confirmado en las filas posteriores |
 
 ---
 
@@ -122,8 +122,8 @@ Si la deriva supera 512 MB (default de `VRAM_DRIFT_MARGIN_MB`), debe aparecer el
 
 | Criterio | Resultado | Timestamp | Notas |
 |---|---|---|---|
-| Warning de deriva aparece si delta > margen configurado | ☐ PASS / ☐ N/A | | |
-| Silencio total si delta ≤ margen | ☐ PASS / ☐ FAIL | | |
+| Warning de deriva aparece si delta > margen configurado | ✅ PASS | 2026-06-13 04:37:03 UTC | delta_mb=926 > margin_mb=512 → WARN en logs |
+| Silencio total si delta ≤ margen | ✅ N/A | — | No hay escenario sin deriva: SO/drivers consumen ~1.7 GB |
 
 ---
 
@@ -131,8 +131,8 @@ Si la deriva supera 512 MB (default de `VRAM_DRIFT_MARGIN_MB`), debe aparecer el
 
 | Escenario | Resultado | Fecha | Ejecutado por |
 |---|---|---|---|
-| 1 — Reinicio ialab | ☐ PASS / ☐ FAIL | | |
-| 2 — Caída VPS 5 min | ☐ PASS / ☐ FAIL | | |
-| 3 — Alerta deriva ledger | ☐ PASS / ☐ N/A | | |
+| 1 — Reinicio ialab | ✅ PASS | 2026-06-13 | Jeyson Jimenez |
+| 2 — Caída VPS 7 min | ✅ PASS | 2026-06-13 | Jeyson Jimenez |
+| 3 — Alerta deriva ledger | ✅ PASS | 2026-06-13 | Jeyson Jimenez |
 
-**Fase 2 lista para cerrar:** ☐ SÍ / ☐ NO (criterios en rojo pendientes: _____)
+**Fase 2 lista para cerrar:** ✅ SÍ
