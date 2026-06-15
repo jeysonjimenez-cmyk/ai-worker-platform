@@ -31,9 +31,9 @@ docker compose -f deploy/ialab/docker-compose.yml logs worker-echo | grep "regis
 
 ```bash
 # Desde el VPS (o cualquier cliente con X-App-Key) — crear un job de echo
-APP_KEY="<tu-app-key>"
+APP_KEY="********************************"
 
-curl -s -X POST http://localhost:8081/ai/jobs \
+curl -s -X POST http://100.106.192.45:8081/ai/jobs \
   -H "Content-Type: application/json" \
   -H "X-App-Key: $APP_KEY" \
   -d '{"service":"echo","payload":{"text":"hola mundo"}}' | jq .
@@ -44,7 +44,7 @@ JOB_ID="<job_id>"
 
 ```bash
 # Sondear hasta done (el echo es rápido, <5s)
-watch -n2 "curl -s http://localhost:8081/ai/jobs/$JOB_ID -H 'X-App-Key: $APP_KEY' | jq '{status,result}'"
+watch -n2 "curl -s http://100.106.192.45:8081/ai/jobs/$JOB_ID -H 'X-App-Key: $APP_KEY' | jq '{status,result}'"
 ```
 
 Resultado esperado: `"status": "done"`, `"result": {"echo": {"text": "hola mundo"}}`.
@@ -79,7 +79,7 @@ psql -h localhost -p 5433 -U $POSTGRES_USER -d $POSTGRES_DB \
 docker compose -f deploy/ialab/docker-compose.yml up -d worker-echo
 
 # 2. Crear un job
-JOB_ID=$(curl -s -X POST http://localhost:8081/ai/jobs \
+JOB_ID=$(curl -s -X POST http://100.106.192.45:8081/ai/jobs \
   -H "Content-Type: application/json" \
   -H "X-App-Key: $APP_KEY" \
   -d '{"service":"echo","payload":{"text":"mid-job test"}}' | jq -r .id)
@@ -89,14 +89,14 @@ echo "job: $JOB_ID"
 docker compose -f deploy/ialab/docker-compose.yml kill worker-echo
 
 # 4. Verificar estado del job — debe quedar 'running' inicialmente
-curl -s http://localhost:8081/ai/jobs/$JOB_ID -H "X-App-Key: $APP_KEY" | jq .status
+curl -s http://100.106.192.45:8081/ai/jobs/$JOB_ID -H "X-App-Key: $APP_KEY" | jq .status
 ```
 
 ```bash
 # Esperar hasta 90s y verificar que vuelve a pending
 # (el heartbeat monitor del VPS hace el re-enqueue)
 sleep 95
-curl -s http://localhost:8081/ai/jobs/$JOB_ID -H "X-App-Key: $APP_KEY" | jq .status
+curl -s http://100.106.192.45:8081/ai/jobs/$JOB_ID -H "X-App-Key: $APP_KEY" | jq .status
 # esperado: "pending"
 ```
 
@@ -104,7 +104,7 @@ curl -s http://localhost:8081/ai/jobs/$JOB_ID -H "X-App-Key: $APP_KEY" | jq .sta
 # 5. Volver a arrancar el worker — debe retomar el job
 docker compose -f deploy/ialab/docker-compose.yml up -d worker-echo
 sleep 10
-curl -s http://localhost:8081/ai/jobs/$JOB_ID -H "X-App-Key: $APP_KEY" | jq .status
+curl -s http://100.106.192.45:8081/ai/jobs/$JOB_ID -H "X-App-Key: $APP_KEY" | jq .status
 # esperado: "done"
 ```
 
@@ -122,7 +122,7 @@ curl -s http://localhost:8081/ai/jobs/$JOB_ID -H "X-App-Key: $APP_KEY" | jq .sta
 
 ```bash
 # Anotar el worker_id configurado en worker-echo.env
-WORKER_ID="<WORKER_ID del .env>"
+WORKER_ID="w-echo-ialab"
 
 # Estado antes del restart
 source ~/ai-worker-platform/deploy/vps/.env
@@ -159,7 +159,7 @@ psql -h localhost -p 5433 -U $POSTGRES_USER -d $POSTGRES_DB \
 ```bash
 # Crear varios jobs en serie y verificar que el worker permanece online
 for i in $(seq 1 10); do
-  curl -s -X POST http://localhost:8081/ai/jobs \
+  curl -s -X POST http://100.106.192.45:8081/ai/jobs \
     -H "Content-Type: application/json" \
     -H "X-App-Key: $APP_KEY" \
     -d "{\"service\":\"echo\",\"payload\":{\"n\":$i}}" | jq -r .id
@@ -167,7 +167,7 @@ done
 
 # Verificar que el worker no cayó a offline en ningún momento
 psql -h localhost -p 5433 -U $POSTGRES_USER -d $POSTGRES_DB \
-  -c "SELECT id, status, last_heartbeat_at FROM workers WHERE id = '$WORKER_ID';"
+  -c "SELECT id, status, last_heartbeat FROM workers WHERE id = '$WORKER_ID';"
 ```
 
 Para verificar el criterio completo con bloqueo real: modificar temporalmente `worker_echo/__init__.py`

@@ -3,7 +3,12 @@ package jobs
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -14,16 +19,46 @@ import (
 
 // serviceRequirements maps service → default min_vram_mb.
 var serviceRequirements = map[string]int{
-	"transcription":     10000,
-	"translation":       4000,
-	"llm_chat":          4000,
-	"tts":               2000,
-	"image_generation":  15000,
-	"video_generation":  14000,
-	"lipsync":           13000,
-	"image_compose":     11000,
+	"transcription":       10000,
+	"translation":         4000,
+	"llm_chat":            4000,
+	"tts":                 2000,
+	"image_generation":    15000,
+	"video_generation":    14000,
+	"lipsync":             13000,
+	"image_compose":       11000,
 	"image_understanding": 4000,
-	"embeddings":        2000,
+	"embeddings":          2000,
+}
+
+// serviceMaxDuration maps service → max execution time before the monitor marks the job failed.
+// Distinct from the heartbeat timeout (90s): this caps total run time, not idle time.
+var serviceMaxDuration = map[string]time.Duration{
+	"transcription":       4 * time.Hour,
+	"translation":         2 * time.Hour,
+	"llm_chat":            30 * time.Minute,
+	"tts":                 15 * time.Minute,
+	"image_generation":    10 * time.Minute,
+	"video_generation":    2 * time.Hour,
+	"lipsync":             1 * time.Hour,
+	"image_compose":       15 * time.Minute,
+	"image_understanding": 5 * time.Minute,
+	"embeddings":          5 * time.Minute,
+}
+
+// T4.9: allow overriding the transcription VRAM requirement via env var so the
+// measured value can be set without a code change after calibration on real hardware.
+func init() {
+	if s := os.Getenv("MIN_VRAM_TRANSCRIPTION_MB"); s != "" {
+		if v, err := strconv.Atoi(s); err == nil && v > 0 {
+			serviceRequirements["transcription"] = v
+		}
+	}
+}
+
+// ServiceMaxDurations returns the per-service max execution duration map, for use by the monitor.
+func ServiceMaxDurations() map[string]time.Duration {
+	return serviceMaxDuration
 }
 
 var priorityMap = map[string]int{
@@ -43,12 +78,13 @@ func writeError(w http.ResponseWriter, code int, msg string) {
 }
 
 type Handler struct {
-	pool      *pgxpool.Pool
-	dispatcher *webhook.Dispatcher
+	pool          *pgxpool.Pool
+	dispatcher    *webhook.Dispatcher
+	fileServerURL string
 }
 
-func NewHandler(pool *pgxpool.Pool, dispatcher *webhook.Dispatcher) *Handler {
-	return &Handler{pool: pool, dispatcher: dispatcher}
+func NewHandler(pool *pgxpool.Pool, dispatcher *webhook.Dispatcher, fileServerURL string) *Handler {
+	return &Handler{pool: pool, dispatcher: dispatcher, fileServerURL: fileServerURL}
 }
 
 type createJobRequest struct {
@@ -280,6 +316,102 @@ func (h *Handler) IngestLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]int{"inserted": len(entries)})
+}
+
+type registerFileRequest struct {
+	Filename  string `json:"filename"`
+	Path      string `json:"path"`
+	SizeBytes *int64 `json:"size_bytes"`
+}
+
+func (h *Handler) RegisterFile(w http.ResponseWriter, r *http.Request) {
+	workerID := auth.GetWorkerID(r)
+	jobID := r.PathValue("id")
+
+	var req registerFileRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "invalid json")
+		return
+	}
+	if req.Filename == "" {
+		writeError(w, http.StatusUnprocessableEntity, "filename is required")
+		return
+	}
+	if req.Path == "" {
+		writeError(w, http.StatusUnprocessableEntity, "path is required")
+		return
+	}
+
+	owned, err := RegisterFile(r.Context(), h.pool, RegisterFileParams{
+		JobID:     jobID,
+		WorkerID:  workerID,
+		Filename:  req.Filename,
+		Path:      req.Path,
+		SizeBytes: req.SizeBytes,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !owned {
+		writeError(w, http.StatusConflict, "job not owned by this worker")
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]string{"status": "ok"})
+}
+
+// GetFile proxies GET /ai/jobs/{id}/files/{filename} to the ialab file server via Tailscale.
+// Streams the response without buffering in memory.
+// Returns 503 when the file server is unreachable.
+func (h *Handler) GetFile(w http.ResponseWriter, r *http.Request) {
+	appID := auth.GetAppID(r)
+	jobID := r.PathValue("id")
+	filename := r.PathValue("filename")
+
+	// Defense-in-depth: reject suspicious filenames (router already blocks slashes via single-segment wildcard).
+	if filename == "" || strings.Contains(filename, "..") || strings.ContainsAny(filename, "/\\") {
+		writeError(w, http.StatusBadRequest, "invalid filename")
+		return
+	}
+
+	// Verify the job belongs to the requesting app.
+	owner, err := GetJobApp(r.Context(), h.pool, jobID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if owner == "" || owner != appID {
+		writeError(w, http.StatusNotFound, "job not found")
+		return
+	}
+
+	if h.fileServerURL == "" {
+		writeError(w, http.StatusServiceUnavailable, "file server not configured")
+		return
+	}
+
+	targetURL := h.fileServerURL + "/files/" + jobID + "/" + filename
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, targetURL, nil)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to build upstream request")
+		return
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "file server unavailable")
+		return
+	}
+	defer resp.Body.Close()
+
+	if ct := resp.Header.Get("Content-Type"); ct != "" {
+		w.Header().Set("Content-Type", ct)
+	}
+	if cl := resp.Header.Get("Content-Length"); cl != "" {
+		w.Header().Set("Content-Length", cl)
+	}
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, resp.Body) //nolint:errcheck
 }
 
 func (h *Handler) Cancel(w http.ResponseWriter, r *http.Request) {

@@ -46,6 +46,21 @@ class JobContext:
                 "log unexpected status %d for job %s", resp.status_code, self._job_id
             )
 
+    def upload_file_metadata(
+        self, filename: str, path: str, size_bytes: int | None = None
+    ) -> None:
+        try:
+            resp = self._client.upload_file_metadata(self._job_id, filename, path, size_bytes)
+        except Exception as exc:
+            logger.warning("upload_file_metadata failed for job %s: %s", self._job_id, exc)
+            return
+        if resp.status_code == 409:
+            logger.warning("fencing: upload_file_metadata discarded for job %s", self._job_id)
+        elif not resp.is_success:
+            logger.warning(
+                "upload_file_metadata unexpected status %d for job %s", resp.status_code, self._job_id
+            )
+
 
 class Scaffold:
     """

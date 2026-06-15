@@ -1,3 +1,6 @@
+volumes:
+  files_data:  # shared between worker-whisper (write) and file-server (read)
+
 services:
   worker-echo:
     build:
@@ -15,3 +18,43 @@ services:
     network_mode: host
     # network_mode: host gives the container access to Tailscale (tailscale0 interface).
     # ialab never exposes worker containers to the internet — Tailscale ACLs enforce this.
+
+  worker-whisper:
+    build:
+      context: ../../workers
+      dockerfile: Dockerfile.whisper
+    restart: unless-stopped
+    env_file:
+      - path: /etc/ai-platform/worker-whisper.env
+        required: false
+      - path: ${HOME}/.config/ai-platform/worker-whisper.env
+        required: false
+    volumes:
+      - files_data:/app/files
+    network_mode: host
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  file-server:
+    image: python:3.12-slim
+    command:
+      - python3
+      - -m
+      - http.server
+      - "8001"
+      - --bind
+      - "100.103.55.110"
+      - --directory
+      - /data
+    volumes:
+      - files_data:/data/files
+    network_mode: host
+    # Binds to the Tailscale IP of ialab (100.103.55.110), never 0.0.0.0.
+    # URL layout: http://100.103.55.110:8001/files/{job_id}/{filename}
+    # Only reachable from the VPS via Tailscale (ACLs enforced by tailnet).
+    restart: unless-stopped

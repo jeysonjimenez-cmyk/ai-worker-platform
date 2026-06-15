@@ -75,3 +75,23 @@ class APIClient:
             headers=self._worker_headers,
             timeout=10,
         )
+
+    def upload_file_metadata(
+        self, job_id: str, filename: str, path: str, size_bytes: int | None = None
+    ) -> httpx.Response:
+        body: dict[str, Any] = {"filename": filename, "path": path}
+        if size_bytes is not None:
+            body["size_bytes"] = size_bytes
+        return httpx.post(
+            f"{self._base}/ai/jobs/{job_id}/files",
+            json=body,
+            headers=self._worker_headers,
+            timeout=10,
+        )
+
+    def unload_model(self, worker_id: str) -> httpx.Response:
+        return httpx.post(
+            f"{self._base}/workers/{worker_id}/unload-model",
+            headers=self._worker_headers,
+            timeout=10,
+        )

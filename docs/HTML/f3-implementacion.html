@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fase 3 — Worker base Python (scaffold): Qué se implementó</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f1117; color: #e2e8f0; line-height: 1.6; }
+
+    /* HEADER */
+    .header { background: linear-gradient(135deg, #1a1f2e 0%, #0f1117 100%); border-bottom: 1px solid #2d3748; padding: 2.5rem 3rem; }
+    .header h1 { font-size: 1.7rem; font-weight: 800; color: #f7fafc; letter-spacing: -0.02em; }
+    .header .subtitle { font-size: 0.95rem; color: #718096; margin-top: 0.3rem; }
+    .badges { display: flex; gap: 0.5rem; margin-top: 0.9rem; flex-wrap: wrap; }
+    .badge { display: inline-block; padding: 0.2rem 0.7rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
+    .badge-green { background: #1a4731; color: #68d391; border: 1px solid #276749; }
+    .badge-blue { background: #1a2744; color: #63b3ed; border: 1px solid #2b4c8c; }
+    .badge-purple { background: #2d1f4e; color: #b794f4; border: 1px solid #553c9a; }
+    .badge-orange { background: #3d2200; color: #f6ad55; border: 1px solid #7b4d00; }
+    .badge-teal { background: #1a3535; color: #4fd1c5; border: 1px solid #2c6060; }
+
+    /* LAYOUT */
+    .container { max-width: 980px; margin: 0 auto; padding: 2rem 3rem 4rem; }
+
+    /* RESUMEN GRID */
+    .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin: 2rem 0; }
+    .card { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 10px; padding: 1.2rem 1.4rem; }
+    .card .label { font-size: 0.72rem; color: #718096; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.4rem; }
+    .card .value { font-size: 1.6rem; font-weight: 800; color: #68d391; }
+    .card .sub { font-size: 0.78rem; color: #a0aec0; margin-top: 0.15rem; }
+
+    /* ARQUITECTURA */
+    .arch-diagram { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 10px; padding: 1.5rem 2rem; margin: 1.5rem 0; font-family: 'Fira Code', monospace; font-size: 0.82rem; line-height: 1.8; color: #a0aec0; }
+    .arch-diagram .hl { color: #68d391; font-weight: 600; }
+    .arch-diagram .hl2 { color: #63b3ed; font-weight: 600; }
+    .arch-diagram .hl3 { color: #b794f4; font-weight: 600; }
+    .arch-diagram .dim { color: #4a5568; }
+
+    /* TASK CARDS */
+    h2 { font-size: 1rem; font-weight: 700; color: #a0aec0; margin: 2.5rem 0 1rem; text-transform: uppercase; letter-spacing: 0.08em; padding-bottom: 0.4rem; border-bottom: 1px solid #2d3748; }
+
+    .task { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 10px; margin-bottom: 1.2rem; overflow: hidden; }
+    .task-header { display: flex; align-items: flex-start; gap: 1rem; padding: 1.1rem 1.4rem; cursor: pointer; user-select: none; }
+    .task-header:hover { background: #1e2535; }
+    .task-id { font-size: 0.72rem; font-weight: 700; color: #4a5568; font-family: monospace; white-space: nowrap; padding-top: 0.1rem; }
+    .task-meta { flex: 1; }
+    .task-title { font-size: 0.95rem; font-weight: 700; color: #f7fafc; }
+    .task-desc { font-size: 0.82rem; color: #718096; margin-top: 0.2rem; }
+    .task-chips { display: flex; gap: 0.4rem; margin-top: 0.5rem; flex-wrap: wrap; }
+    .chip { font-size: 0.7rem; padding: 0.15rem 0.55rem; border-radius: 4px; font-weight: 500; }
+    .chip-dev { background: #1a2744; color: #63b3ed; }
+    .chip-infra { background: #2d1f4e; color: #b794f4; }
+    .chip-devops { background: #3d2200; color: #f6ad55; }
+    .chip-doc { background: #1a3a2a; color: #68d391; }
+    .chip-time { background: #161b27; color: #718096; border: 1px solid #2d3748; }
+    .task-status { font-size: 0.75rem; color: #68d391; font-weight: 700; white-space: nowrap; padding-top: 0.1rem; }
+    .task-toggle { font-size: 0.75rem; color: #4a5568; margin-left: 0.5rem; padding-top: 0.1rem; transition: transform 0.2s; }
+    .task.open .task-toggle { transform: rotate(180deg); }
+
+    .task-body { padding: 0 1.4rem 1.2rem; border-top: 1px solid #1e2535; display: none; }
+    .task.open .task-body { display: block; }
+    .task-body p { font-size: 0.85rem; color: #a0aec0; margin: 1rem 0 0.6rem; }
+    .task-body p strong { color: #e2e8f0; }
+
+    /* SECTIONS WITHIN TASK */
+    .section { margin-bottom: 1rem; }
+    .section-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; color: #4a5568; margin-bottom: 0.5rem; margin-top: 0.8rem; }
+
+    /* FILES */
+    .file-list { list-style: none; }
+    .file-list li { display: flex; align-items: flex-start; gap: 0.6rem; padding: 0.4rem 0; border-bottom: 1px solid #161b27; font-size: 0.82rem; }
+    .file-list li:last-child { border-bottom: none; }
+    .file-name { font-family: monospace; color: #63b3ed; white-space: nowrap; flex-shrink: 0; }
+    .file-desc { color: #a0aec0; }
+    .file-new { font-size: 0.65rem; font-weight: 700; color: #68d391; background: #1a3a2a; border: 1px solid #276749; padding: 0.05rem 0.35rem; border-radius: 3px; margin-left: 0.3rem; flex-shrink: 0; }
+
+    /* TESTS */
+    .test-list { list-style: none; }
+    .test-list li { display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.3rem 0; font-size: 0.82rem; color: #a0aec0; }
+    .test-list li::before { content: '✓'; color: #68d391; font-weight: 700; flex-shrink: 0; margin-top: 0.05rem; }
+
+    /* DECISIONS */
+    .decision { background: #161b27; border-left: 3px solid #4299e1; border-radius: 0 6px 6px 0; padding: 0.65rem 1rem; margin: 0.4rem 0; font-size: 0.82rem; }
+    .decision strong { color: #63b3ed; display: block; margin-bottom: 0.15rem; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.03em; }
+    .decision p { color: #a0aec0; margin: 0; }
+
+    /* DEBT */
+    .debt { background: #2d1800; border-left: 3px solid #f6ad55; border-radius: 0 6px 6px 0; padding: 0.65rem 1rem; margin: 0.4rem 0; font-size: 0.82rem; color: #fbd38d; }
+
+    /* BUG FOUND IN E2E */
+    .bug { background: #2d1a1a; border-left: 3px solid #fc8181; border-radius: 0 6px 6px 0; padding: 0.65rem 1rem; margin: 0.4rem 0; font-size: 0.82rem; }
+    .bug strong { color: #fc8181; display: block; margin-bottom: 0.15rem; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.03em; }
+    .bug p { color: #fbd38d; margin: 0; }
+
+    /* TABLE */
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin: 0.5rem 0; }
+    th { background: #161b27; color: #718096; padding: 0.45rem 0.8rem; text-align: left; font-weight: 600; border-bottom: 1px solid #2d3748; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    td { padding: 0.45rem 0.8rem; border-bottom: 1px solid #161b27; color: #e2e8f0; vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+    td code { font-family: monospace; background: #161b27; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.78rem; color: #63b3ed; }
+    .pass { color: #68d391; font-weight: 600; }
+    .task-row td:first-child { font-family: monospace; color: #718096; white-space: nowrap; }
+    .task-row td:last-child { color: #a0aec0; }
+
+    /* RETRO SECTION */
+    .retro-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
+    .retro-card { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 8px; padding: 1.1rem 1.3rem; }
+    .retro-card h3 { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.6rem; }
+    .retro-card h3.good { color: #68d391; }
+    .retro-card h3.risk { color: #f6ad55; }
+    .retro-card h3.lesson { color: #b794f4; }
+    .retro-card ul { list-style: none; }
+    .retro-card ul li { font-size: 0.82rem; color: #a0aec0; padding: 0.25rem 0; border-bottom: 1px solid #1e2535; }
+    .retro-card ul li:last-child { border-bottom: none; }
+    .retro-card ul li::before { content: '→ '; color: #4a5568; }
+
+    /* FOOTER */
+    .footer { text-align: center; padding: 2rem; font-size: 0.75rem; color: #4a5568; border-top: 1px solid #1a1f2e; margin-top: 3rem; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Fase 3 — Worker base Python (scaffold)</h1>
+  <div class="subtitle">Implementación completa · AI Worker Platform · feature/f3</div>
+  <div class="badges">
+    <span class="badge badge-green">✅ Completada 2026-06-13</span>
+    <span class="badge badge-blue">13 tareas</span>
+    <span class="badge badge-purple">~34 h estimadas</span>
+    <span class="badge badge-orange">Python + Go + Docker</span>
+    <span class="badge badge-teal">4/4 E2E PASS</span>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- RESUMEN NUMÉRICO -->
+  <div class="summary-grid">
+    <div class="card">
+      <div class="label">Archivos nuevos</div>
+      <div class="value">15</div>
+      <div class="sub">Python, Go, Docker, shell</div>
+    </div>
+    <div class="card">
+      <div class="label">Tests añadidos</div>
+      <div class="value">35+</div>
+      <div class="sub">scaffold + config + integración</div>
+    </div>
+    <div class="card">
+      <div class="label">Escenarios E2E</div>
+      <div class="value">4/4</div>
+      <div class="sub">VPS ↔ ialab · hardware real</div>
+    </div>
+    <div class="card">
+      <div class="label">Bugs en e2e</div>
+      <div class="value">4</div>
+      <div class="sub">encontrados y corregidos</div>
+    </div>
+  </div>
+
+  <!-- ARQUITECTURA -->
+  <h2>Qué hace el sistema después de F3</h2>
+
+  <div class="arch-diagram">
+    <span class="dim">┌──────────────────────── VPS 100.106.192.45 ─────────────────────────┐</span><br>
+    │  <span class="hl">API Go</span>                                                               │<br>
+    │  ├─ <span class="hl2">POST /ai/jobs/{id}/logs</span>  (X-Worker-Key + fencing)               │<br>
+    │  ├─ POST /workers/{id}/claim?wait=N  (long-poll genuino)            │<br>
+    │  ├─ PATCH /ai/jobs/{id}/progress  (reporte de avance)               │<br>
+    │  └─ <span class="hl3">deploy.sh</span>: validate .env → build → healthcheck → migrate up     │<br>
+    │  <span class="hl">PostgreSQL</span>                                                            │<br>
+    │  └─ <span class="hl2">job_logs</span> (F3 nuevo) · jobs · workers · gpus · worker_metrics     │<br>
+    <span class="dim">└──────────────────────────────────────────────────────────────────────┘</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">│  Tailscale  (network privada)</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">↓</span><br>
+    <span class="dim">┌──────────────────────── ialab 100.103.55.110 ───────────────────────┐</span><br>
+    │  <span class="hl">worker-echo</span> (Docker, network_mode: host)                             │<br>
+    │  ├─ <span class="hl2">worker_base</span>: registro idempotente → heartbeat thread → claim loop│<br>
+    │  ├─ backoff exponencial · fencing 409 · graceful shutdown SIGTERM   │<br>
+    │  ├─ <span class="hl3">execute(job, ctx)</span> → ctx.log() + ctx.report_progress(pct)       │<br>
+    │  └─ env desde <span class="dim">~/.config/ai-platform/worker-echo.env</span>               │<br>
+    │  <span class="hl">Node Agent</span> (systemd) — ya corriendo desde F2                        │<br>
+    <span class="dim">└──────────────────────────────────────────────────────────────────────┘</span>
+  </div>
+
+  <!-- TAREAS -->
+  <h2>Tareas implementadas <span style="font-size:0.75rem;color:#4a5568;font-weight:400;text-transform:none;letter-spacing:0;">(click para expandir)</span></h2>
+
+  <!-- T3.1 -->
+  <div class="task open" onclick="this.classList.toggle('open')">
+    <div class="task-header">
+      <div class="task-id">T3.1</div>
+      <div class="task-meta">
+        <div class="task-title">Scaffold del paquete <code style="font-size:0.85em;color:#63b3ed;">worker_base</code> + configuración por entorno</div>
+        <div class="task-desc">Paquete Python con la interfaz <code>execute(job, ctx)</code>, config por env vars, cliente HTTP y ciclo de vida base.</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo</span>
+          <span class="chip chip-time">3 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-13</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> cada worker de inferencia (whisper, ollama, tts) necesita lógica idéntica de registro, heartbeat, claim y fencing. Sin un scaffold, cada uno reimplementa lo mismo. <code>worker_base</code> lo resuelve una vez; los workers reales solo implementan <code>execute()</code>.</p>
+
+      <div class="section-title">Estructura creada</div>
+      <ul class="file-list">
+        <li><span class="file-name">workers/worker_base/__init__.py</span> <span class="file-new">NEW</span><span class="file-desc">— exporta <code>Config</code>, <code>from_env</code>, <code>Scaffold</code>, <code>JobContext</code></span></li>
+        <li><span class="file-name">workers/worker_base/config.py</span> <span class="file-new">NEW</span><span class="file-desc">— <code>Config</code> dataclass frozen + <code>from_env()</code>: requiere <code>WORKER_API_URL</code>, <code>WORKER_KEY</code>, <code>WORKER_ADMIN_KEY</code>, <code>WORKER_ID</code>; <code>WORKER_CAPABILITIES</code> como JSON; intervalos opcionales con defaults seguros</span></li>
+        <li><span class="file-name">workers/worker_base/api_client.py</span> <span class="file-new">NEW</span><span class="file-desc">— <code>APIClient</code> wrapeando <code>httpx</code>: <code>register()</code>, <code>heartbeat()</code>, <code>claim()</code>, <code>complete()</code>, <code>report_progress()</code>, <code>log()</code>; <code>X-Admin-Key</code> para registro, <code>X-Worker-Key</code> para todo lo demás</span></li>
+        <li><span class="file-name">workers/worker_base/scaffold.py</span> <span class="file-new">NEW</span><span class="file-desc">— <code>Scaffold(config, execute)</code> con ciclo de vida completo: registro, heartbeat thread, claim loop, fencing, graceful shutdown</span></li>
+        <li><span class="file-name">workers/tests/test_config.py</span> <span class="file-new">NEW</span><span class="file-desc">— 7 tests: errores en las 4 vars requeridas, JSON inválido en capabilities, config válida, trailing slash en URL</span></li>
+        <li><span class="file-name">workers/tests/test_scaffold.py</span> <span class="file-new">NEW</span><span class="file-desc">— 9 tests base (crecerá a 24 con T3.2–T3.8)</span></li>
+        <li><span class="file-name">workers/pyproject.toml</span><span class="file-desc">— añadido <code>httpx&gt;=0.28.0</code>; <code>pytest&gt;=8.0.0</code> en dev; <code>testpaths = ["tests"]</code></span></li>
+      </ul>
+
+      <div class="section-title">Convenciones clave</div>
+      <div class="decision">
+        <strong>Config fail-fast al arrancar</strong>
+        <p>Variables requeridas (<code>WORKER_API_URL</code>, <code>WORKER_KEY</code>, <code>WORKER_ADMIN_KEY</code>, <code>WORKER_ID</code>) sin defaults silenciosos. Si alguna falta, el proceso termina con un mensaje de error claro antes de intentar conectar a la API.</p>
+      </div>
+      <div class="decision">
+        <strong>WORKER_ID estable es condición de idempotencia</strong>
+        <p>El registro usa <code>ON CONFLICT (id) DO UPDATE</code> en el servidor. La idempotencia solo se materializa si el worker siempre se registra con el mismo <code>id</code>. UUID nuevo por arranque = una fila por boot. <code>WORKER_ID</code> viene de configuración estable; nunca se genera en runtime.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T3.2 -->
+  <div class="task" onclick="this.classList.toggle('open')">
+    <div class="task-header">
+      <div class="task-id">T3.2</div>
+      <div class="task-meta">
+        <div class="task-title">Registro del worker con capabilities al arrancar</div>
+        <div class="task-desc">Al iniciar, el scaffold llama POST /workers/register. Registro idempotente: re-arrancar no duplica la fila ni pisa el api_key existente.</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo</span>
+          <span class="chip chip-time">2 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-13</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> antes de reclamar jobs, el worker debe estar registrado en la plataforma con sus capabilities declaradas. El endpoint de registro en F1 es un UPSERT real (<code>ON CONFLICT (id) DO UPDATE</code>), lo que permite que <code>docker restart</code> no duplique la fila.</p>
+
+      <div class="section-title">Qué se cambió</div>
+      <ul class="file-list">
+        <li><span class="file-name">workers/worker_base/scaffold.py</span><span class="file-desc">— <code>Scaffold.register()</code>: llama <code>POST /workers/register</code> con <code>X-Admin-Key</code>; el <code>api_key</code> del payload es <code>WORKER_KEY</code>; usa <code>raise_for_status()</code> — arranque falla rápido si hay error de credenciales</span></li>
+      </ul>
+
+      <div class="section-title">Tests añadidos</div>
+      <ul class="test-list">
+        <li><code>test_register_called_at_startup</code>: verifica <code>worker_id</code>, <code>hostname</code> y <code>api_key</code> en el payload</li>
+        <li><code>test_register_idempotent_no_error_on_200</code>: segunda llamada con 200 no lanza excepción</li>
+      </ul>
+
+      <div class="section-title">Nota operativa</div>
+      <div class="decision">
+        <strong>WORKER_ADMIN_KEY solo en el registro inicial</strong>
+        <p>El worker necesita la admin key únicamente para registrarse. Es el mismo tradeoff que el Node Agent (T2.6): no existe endpoint de auto-registro con worker key en la API actual. Tradeoff consciente dentro de la arquitectura congelada.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T3.3 -->
+  <div class="task" onclick="this.classList.toggle('open')">
+    <div class="task-header">
+      <div class="task-id">T3.3</div>
+      <div class="task-meta">
+        <div class="task-title">Heartbeat en thread separado del loop de inferencia</div>
+        <div class="task-desc">Hilo dedicado que envía heartbeat cada N segundos, independiente de execute(). Un job largo no provoca falsos timeouts.</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo</span>
+          <span class="chip chip-time">3 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-13</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> el monitor de F1 marca un worker como offline si no recibe heartbeat en 90s. Si el heartbeat estuviera en el mismo thread que <code>execute()</code>, un job largo de inferencia (whisper procesando 30 min de audio) bloquearía el heartbeat y el worker sería marcado offline incorrectamente.</p>
+
+      <div class="section-title">Implementación</div>
+      <ul class="file-list">
+        <li><span class="file-name">workers/worker_base/scaffold.py</span><span class="file-desc">— <code>_heartbeat_loop()</code>: daemon thread dedicado; usa <code>threading.Event.wait(interval)</code> — espera el intervalo O hasta que <code>_stop</code> se active (permite shutdown limpio sin esperar el próximo tick); errores individuales se logean y reintentan sin terminar el thread</span></li>
+      </ul>
+
+      <div class="section-title">Tests añadidos</div>
+      <ul class="test-list">
+        <li><code>test_heartbeat_fires_while_execute_blocked</code>: ≥2 heartbeats llegan mientras <code>execute()</code> duerme 2.5s con intervalo de 1s</li>
+        <li><code>test_heartbeat_survives_individual_failure</code>: el primer heartbeat lanza excepción y el segundo llega correctamente</li>
+      </ul>
+
+      <div class="section-title">Verificado en hardware real (T3.12)</div>
+      <ul class="test-list">
+        <li>Cadencia real ~10s durante un <code>execute()</code> bloqueado 30s → worker permanece <code>online</code> ✅</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- T3.4 -->
+  <div class="task" onclick="this.classList.toggle('open')">
+    <div class="task-header">
+      <div class="task-id">T3.4</div>
+      <div class="task-meta">
+        <div class="task-title">Claim loop con long-poll y backoff exponencial</div>
+        <div class="task-desc">Loop principal: POST /workers/{id}/claim?wait=N con backoff 1s→max. Al recibir job invoca execute(); sin job espera antes de reintentar.</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo</span>
+          <span class="chip chip-time">3 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-13</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> el worker necesita consumir jobs de forma continua y tolerante a fallos de red, sin martillar la API cuando no hay trabajo. El endpoint de claim implementa long-poll genuino vía <code>?wait=N</code> (<code>LISTEN jobs_channel</code> + <code>WaitForNotification</code> con deadline).</p>
+
+      <div class="section-title">Comportamiento del loop</div>
+      <ul class="file-list">
+        <li><span class="file-name">workers/worker_base/scaffold.py</span><span class="file-desc">— <code>_run_claim_loop()</code>: 200 → parse job + <code>execute()</code> + <code>_complete_job()</code>; 204 → sin job, <code>_stop.wait(2)</code> antes de reintentar; error de red → backoff exponencial (1s → 2s → … → max), se resetea con cualquier respuesta HTTP; 4xx/5xx → log error + <code>_stop.wait(5)</code>; excepción en <code>execute()</code> → complete con <code>error=str(exc)</code>, worker sigue vivo</span></li>
+      </ul>
+
+      <div class="section-title">Tests añadidos</div>
+      <ul class="test-list">
+        <li><code>test_claim_loop_calls_execute_and_complete</code>: claim → execute → complete end-to-end (API mockeada)</li>
+        <li><code>test_claim_loop_retries_on_network_error</code>: primer claim lanza excepción, segundo claim funciona</li>
+        <li><code>test_execute_error_reported_as_complete_error</code>: execute lanza <code>ValueError</code> → complete recibe <code>error=</code> con el mensaje; worker sigue vivo</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- T3.5 -->
+  <div class="task" onclick="this.classList.toggle('open')">
+    <div class="task-header">
+      <div class="task-id">T3.5</div>
+      <div class="task-meta">
+        <div class="task-title">Manejo de fencing (409) en el reporte de resultados</div>
+        <div class="task-desc">Si la API responde 409 al completar un job, el scaffold descarta el resultado y vuelve al claim loop. No crashea ni reintenta.</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo</span>
+          <span class="chip chip-time">2 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-13</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> el fencing de F1 (<code>WHERE worker_id = $reporter</code>) puede devolver 409 si el worker perdió su job por timeout de heartbeat y otro worker lo retomó. El cliente debe respetar esto: descartar el resultado sin crashear ni sobreescribir el job del nuevo worker.</p>
+
+      <div class="section-title">Qué se implementó</div>
+      <ul class="file-list">
+        <li><span class="file-name">workers/worker_base/scaffold.py</span><span class="file-desc">— <code>_complete_job()</code>: si <code>POST /ai/jobs/{id}/complete</code> devuelve 409, loggea warning explícito (<em>"fencing: job X no longer owned by this worker — discarding result"</em>) y retorna sin reintentar; el claim loop continúa</span></li>
+      </ul>
+
+      <div class="section-title">Tests añadidos</div>
+      <ul class="test-list">
+        <li><code>test_fencing_409_discards_and_continues</code>: 409 en complete → worker llega al segundo claim (sigue vivo)</li>
+        <li><code>test_fencing_409_does_not_retry</code>: <code>complete</code> se llama exactamente una vez (sin reintento)</li>
+      </ul>
+
+      <div class="decision">
+        <strong>El fencing de F1 cubre un escenario de F3 no anticipado</strong>
+        <p>El 409 construido en F1 para el "worker zombie que reaparece" es lo que hace seguro el caso borde del shutdown &gt;90s: dos workers, mismo job, sin coordinación, sin corrupción de datos. Inversión de F1 cubriendo F3 gratis.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T3.6 -->
+  <div class="task" onclick="this.classList.toggle('open')">
+    <div class="task-header">
+      <div class="task-id">T3.6</div>
+      <div class="task-meta">
+        <div class="task-title">Endpoint de ingesta de logs de job en la API Go</div>
+        <div class="task-desc">POST /ai/jobs/{id}/logs — inserta líneas en job_logs con autenticación de worker key y fencing. Habilita el helper log() del scaffold.</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo</span>
+          <span class="chip chip-time">3 h · API Go</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-13</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> la tabla <code>job_logs</code> ya existía desde las migraciones de F1, pero no había ningún endpoint para escribir en ella. Los workers de F3 necesitan persistir logs de job para que el dashboard (F5) los muestre.</p>
+
+      <div class="section-title">Archivos creados/modificados</div>
+      <ul class="file-list">
+        <li><span class="file-name">api/internal/jobs/store.go</span><span class="file-desc">— <code>LogEntry</code> struct e <code>IngestLogs()</code>: fencing (<code>SELECT worker_id FROM jobs WHERE id=$1 AND status='running'</code>; 409 si no coincide), bulk insert con <code>unnest($1::text[])</code> — insert atómico del batch en una sola query</span></li>
+        <li><span class="file-name">api/internal/jobs/handler.go</span><span class="file-desc">— <code>IngestLogs()</code> handler: valida payload (logs no vacíos, message requerido), delega al store</span></li>
+        <li><span class="file-name">api/main.go</span><span class="file-desc">— registrado <code>POST /ai/jobs/{id}/logs</code> con <code>workerMW</code></span></li>
+      </ul>
+
+      <div class="section-title">Tests de integración (PostgreSQL real — testcontainers)</div>
+      <ul class="test-list">
+        <li><code>TestIngestLogs_OwnerInserts</code>: worker dueño inserta 2 líneas → 201 + count en DB</li>
+        <li><code>TestIngestLogs_Fencing_WrongWorker</code>: worker no dueño → 409</li>
+        <li><code>TestIngestLogs_MissingWorkerKey</code>: sin key → 401</li>
+        <li><code>TestIngestLogs_InvalidPayload</code>: logs vacíos → 422; message vacío → 422</li>
+      </ul>
+
+      <div class="decision">
+        <strong>unnest($1::text[]) — insert atómico del batch</strong>
+        <p>Un solo statement inserta todas las líneas del batch. No hay transacción explícita porque el insert es independiente del estado del job (ya verificado con el SELECT de fencing). Si el proceso cae a mitad del batch, las líneas insertadas no comprometen la consistencia.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T3.7 -->
+  <div class="task" onclick="this.classList.toggle('open')">
+    <div class="task-header">
+      <div class="task-id">T3.7</div>
+      <div class="task-meta">
+        <div class="task-title">Helpers del scaffold: <code style="font-size:0.85em;color:#63b3ed;">report_progress()</code> y <code style="font-size:0.85em;color:#63b3ed;">log()</code></div>
+        <div class="task-desc">JobContext que el execute() de un worker usa para reportar avance y logs sin conocer el transporte ni el fencing.</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo</span>
+          <span class="chip chip-time">2 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-13</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> un worker real no debería conocer ni el endpoint de progreso ni el de logs, ni manejar fencing por su cuenta. <code>JobContext</code> encapsula todo eso: <code>execute(job, ctx)</code> solo llama <code>ctx.log()</code> y <code>ctx.report_progress(pct)</code>.</p>
+
+      <div class="section-title">Qué se implementó</div>
+      <ul class="file-list">
+        <li><span class="file-name">workers/worker_base/api_client.py</span><span class="file-desc">— <code>report_progress(job_id, progress)</code> → <code>PATCH /ai/jobs/{id}/progress</code>; <code>log(job_id, message, level)</code> → <code>POST /ai/jobs/{id}/logs</code></span></li>
+        <li><span class="file-name">workers/worker_base/scaffold.py</span><span class="file-desc">— clase <code>JobContext</code>: wrapping de <code>log()</code> y <code>report_progress()</code> con manejo de 409 y errores de red (descarta + log, no crashea); <code>ExecuteFn</code> actualizado a <code>Callable[[dict, JobContext], Any]</code>; <code>_run_claim_loop()</code> pasa <code>JobContext</code> a cada invocación de <code>execute()</code></span></li>
+      </ul>
+
+      <div class="section-title">Tests añadidos</div>
+      <ul class="test-list">
+        <li><code>test_report_progress_calls_api</code>: verifica que <code>ctx.report_progress(50)</code> llama el endpoint correcto</li>
+        <li><code>test_report_progress_409_does_not_crash</code>: 409 en progress → worker sigue vivo</li>
+        <li><code>test_log_helper_calls_api</code>: verifica que <code>ctx.log("msg")</code> llama el endpoint correcto</li>
+        <li><code>test_log_helper_409_does_not_crash</code>: 409 en log → worker sigue vivo</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- T3.8 -->
+  <div class="task" onclick="this.classList.toggle('open')">
+    <div class="task-header">
+      <div class="task-id">T3.8</div>
+      <div class="task-meta">
+        <div class="task-title">Graceful shutdown ante SIGTERM</div>
+        <div class="task-desc">Al recibir SIGTERM (docker compose stop), el worker termina limpiamente. El job en curso se completa o vuelve a pending vía el monitor de heartbeat.</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo</span>
+          <span class="chip chip-time">3 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-13</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> <code>docker compose stop</code> envía SIGTERM. Sin handler, el proceso ignora la señal y Docker espera 10s antes de hacer <code>kill -9</code>, dejando el job colgado en <code>running</code>. Con el handler, el worker se detiene limpiamente.</p>
+
+      <div class="section-title">Implementación</div>
+      <ul class="file-list">
+        <li><span class="file-name">workers/worker_base/scaffold.py</span><span class="file-desc">— <code>run()</code> instala <code>signal.signal(SIGTERM, _sigterm)</code>; <code>_sigterm</code> llama <code>self._stop.set()</code>; el job en curso termina normalmente; el heartbeat monitor re-encola el job en ≤90s si el worker sale antes de completarlo</span></li>
+      </ul>
+
+      <div class="section-title">Tests añadidos</div>
+      <ul class="test-list">
+        <li><code>test_sigterm_stops_worker_with_no_job</code>: SIGTERM cuando idle → <code>_stop.is_set()</code> tras <code>run()</code></li>
+        <li><code>test_sigterm_stops_worker_during_execute</code>: SIGTERM con execute en curso → execute completa, worker sale limpio</li>
+      </ul>
+
+      <div class="decision">
+        <strong>Decisión clave: no hay endpoint "return to pending"</strong>
+        <p>No existe ningún endpoint worker-facing que devuelva un job a <code>pending</code>. SIGTERM simplemente detiene el heartbeat y el claim loop. El monitor de heartbeat de F1 (<code>RequeueTimedOutJob</code>) re-encola el job en ≤90s — mismo mecanismo que verifica T3.12 al matar el contenedor mid-job. Menos mecanismo = más correcto.</p>
+      </div>
+
+      <div class="section-title">Verificado en hardware real (T3.12)</div>
+      <ul class="test-list">
+        <li>Kill del contenedor mid-job → job vuelve a <code>pending</code> en <strong>32s</strong> (límite 90s) ✅</li>
+        <li>Otro worker lo retoma y completa sin intervención ✅</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- T3.9 -->
+  <div class="task" onclick="this.classList.toggle('open')">
+    <div class="task-header">
+      <div class="task-id">T3.9</div>
+      <div class="task-meta">
+        <div class="task-title">Worker de ejemplo <code style="font-size:0.85em;color:#63b3ed;">worker-echo</code> sobre el scaffold</div>
+        <div class="task-desc">Worker mínimo que implementa execute() devolviendo el payload como echo. Prueba de que el scaffold resuelve todo lo común.</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo</span>
+          <span class="chip chip-time">2 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-13</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> verificar que la interfaz del scaffold es la correcta antes de construir workers pesados (whisper, ollama). Si <code>worker-echo</code> cabe en ~10 líneas sin tocar HTTP ni fencing, el scaffold abstrae lo correcto.</p>
+
+      <div class="section-title">Qué se creó</div>
+      <ul class="file-list">
+        <li><span class="file-name">workers/worker_echo/__init__.py</span> <span class="file-new">NEW</span><span class="file-desc">— <code>execute(job, ctx)</code>: <code>ctx.log("procesando...")</code> + <code>ctx.report_progress(50)</code> + retorna <code>{"echo": job["payload"]}</code>; <code>main()</code> arranca el scaffold con <code>from_env()</code></span></li>
+        <li><span class="file-name">workers/pyproject.toml</span><span class="file-desc">— entry point <code>worker-echo = "worker_echo:main"</code></span></li>
+      </ul>
+
+      <div class="decision">
+        <strong>Sin tests propios en worker-echo</strong>
+        <p>El <code>execute()</code> del echo es trivial y está completamente cubierto por los tests del scaffold (T3.4, T3.7). Un test unitario de <code>execute()</code> sería redundante. Este es el comportamiento deseado: el worker no tiene lógica propia que testear.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T3.10 -->
+  <div class="task" onclick="this.classList.toggle('open')">
+    <div class="task-header">
+      <div class="task-id">T3.10</div>
+      <div class="task-meta">
+        <div class="task-title">Dockerfile base + entrada en Docker Compose de ialab</div>
+        <div class="task-desc">Imagen Python 3.12 + uv con dependencias congeladas. Servicio worker-echo en Compose de ialab con network_mode: host para Tailscale.</div>
+        <div class="task-chips">
+          <span class="chip chip-infra">Infraestructura</span>
+          <span class="chip chip-time">3 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-13</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> el primer worker en Docker en ialab. El Node Agent de F2 corre bajo systemd; los workers de inferencia corren en contenedores para poder controlar sus dependencias (CUDA, modelos) sin tocar el sistema host.</p>
+
+      <div class="section-title">Archivos creados/modificados</div>
+      <ul class="file-list">
+        <li><span class="file-name">workers/Dockerfile</span> <span class="file-new">NEW</span><span class="file-desc">— base <code>python:3.12-slim</code> + uv 0.7.12 pinneado; <code>uv sync --frozen --no-dev</code> en layer cacheada; <code>PATH</code> apunta al venv (evita re-sync en runtime); CMD: <code>python -m worker_echo</code></span></li>
+        <li><span class="file-name">workers/worker_echo/__main__.py</span> <span class="file-new">NEW</span><span class="file-desc">— entry point de módulo para <code>python -m worker_echo</code></span></li>
+        <li><span class="file-name">deploy/ialab/docker-compose.yml</span><span class="file-desc">— servicio <code>worker-echo</code>: contexto <code>../../workers</code>, <code>network_mode: host</code> (acceso a <code>tailscale0</code>), env_file con fallback a <code>~/.config/ai-platform/worker-echo.env</code></span></li>
+        <li><span class="file-name">deploy/ialab/worker-echo.env.example</span> <span class="file-new">NEW</span><span class="file-desc">— plantilla con las 5 variables requeridas</span></li>
+      </ul>
+
+      <div class="section-title">Decisiones de diseño</div>
+      <div class="decision">
+        <strong>network_mode: host para Tailscale</strong>
+        <p>La forma más simple de dar al contenedor acceso a la interfaz <code>tailscale0</code> del host. Alternativas (MACVLAN, red bridge) requieren configuración de redes en Docker sin aportar aislamiento útil en ialab (nodo privado). Si en F4+ un worker expone un puerto propio, revisar.</p>
+      </div>
+      <div class="decision">
+        <strong>uv solo en build-time; runtime usa el venv directamente</strong>
+        <p><code>PATH</code> apunta al venv para que <code>python</code> resuelva al intérprete del venv sin invocar <code>uv run</code>, que resincronizaría dependencias (incluidas las de dev) al arrancar el contenedor.</p>
+      </div>
+      <div class="decision">
+        <strong>required: false en env_file</strong>
+        <p><code>docker compose build</code> funciona sin el archivo de credenciales. El scaffold detecta las vars faltantes al arrancar y falla con mensaje claro. Separación correcta entre build-time y runtime.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T3.11 -->
+  <div class="task" onclick="this.classList.toggle('open')">
+    <div class="task-header">
+      <div class="task-id">T3.11</div>
+      <div class="task-meta">
+        <div class="task-title">Script de deploy del VPS <code style="font-size:0.85em;color:#63b3ed;">deploy/vps/deploy.sh</code></div>
+        <div class="task-desc">Automatiza validate → build → healthcheck → migrate. Resuelve la deuda de retro F2 #2: make deploy no reconstruía la imagen Go.</div>
+        <div class="task-chips">
+          <span class="chip chip-devops">DevOps</span>
+          <span class="chip chip-time">2 h · Retro F2 #2</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-13</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> T3.6 introduce un endpoint nuevo → primer redeploy de la API desde F1. Además se descubrió que <code>make deploy</code> usaba <code>docker compose up -d</code> sin <code>--build</code>, dejando la imagen vieja corriendo silenciosamente. Llevaba dos fases así.</p>
+
+      <div class="section-title">Archivos creados/modificados</div>
+      <ul class="file-list">
+        <li><span class="file-name">deploy/vps/deploy.sh</span> <span class="file-new">NEW</span><span class="file-desc">— flujo: valida <code>.env</code> (aborta con lista de vars faltantes) → <code>git pull</code> (opcional, <code>--no-pull</code> para rsync) → <code>docker compose down</code> → <code>up --build -d</code> → healthcheck hasta 30s → <code>migrate up</code></span></li>
+        <li><span class="file-name">Makefile</span><span class="file-desc">— target <code>deploy</code> corregido: llama <code>deploy.sh --no-pull</code> via SSH con <code>--build</code>; defecto silencioso del <code>up -d</code> anterior eliminado</span></li>
+        <li><span class="file-name">docs/VPS.md</span><span class="file-desc">— nueva sección "Despliegue de la API": flujo <code>make deploy</code> (desde dev) y <code>bash deploy.sh</code> (desde VPS), lista de vars requeridas</span></li>
+      </ul>
+
+      <div class="section-title">Bug silencioso descubierto</div>
+      <div class="bug">
+        <strong>make deploy no reconstruía la imagen Go — desde F1</strong>
+        <p><code>docker compose up -d</code> sin <code>--build</code> levanta el contenedor con la imagen en caché. Los deploys manuales en el VPS sí incluían rebuild, así que nadie lo notó. La automatización codificó el paso incompleto y solo se detectó al forzarse a scriptear el flujo completo.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T3.12 -->
+  <div class="task open" onclick="this.classList.toggle('open')">
+    <div class="task-header">
+      <div class="task-id">T3.12</div>
+      <div class="task-meta">
+        <div class="task-title">Prueba de integración e2e real VPS ↔ ialab</div>
+        <div class="task-desc">4 escenarios ejecutados contra hardware real. Primer test del sistema completo: worker Docker + API Go + PostgreSQL + red Tailscale.</div>
+        <div class="task-chips">
+          <span class="chip chip-devops">DevOps</span>
+          <span class="chip chip-time">4 h · Hardware real</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 4/4 PASS · 2026-06-13</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> los tests con API mockeada prueban el contrato que se imaginó. Solo el hardware prueba el que se escribió. T3.12 es la primera verificación del sistema completo sobre red real.</p>
+
+      <div class="section-title">Resultados de la corrida</div>
+      <table>
+        <tr><th>#</th><th>Escenario</th><th>Resultado</th><th>Detalle clave</th></tr>
+        <tr>
+          <td>1</td>
+          <td>Ciclo completo e2e</td>
+          <td class="pass">✅ PASS</td>
+          <td>Job <code>echo</code> → <code>done</code> con result correcto + 2 filas en <code>job_logs</code></td>
+        </tr>
+        <tr>
+          <td>2</td>
+          <td>Kill contenedor mid-job</td>
+          <td class="pass">✅ PASS</td>
+          <td>Job vuelve a <code>pending</code> en <strong>32s</strong> (límite 90s), worker rearrancado lo retoma y completa</td>
+        </tr>
+        <tr>
+          <td>3</td>
+          <td>Restart idempotente</td>
+          <td class="pass">✅ PASS</td>
+          <td><code>count(*)=1</code> en <code>workers</code>, <code>registered_at</code> invariante (<code>docker compose up -d</code>, no <code>restart</code>)</td>
+        </tr>
+        <tr>
+          <td>4</td>
+          <td>Heartbeat con execute() bloqueado</td>
+          <td class="pass">✅ PASS</td>
+          <td>Cadencia real ~10s durante <code>execute()</code> de 30s → worker permanece <code>online</code></td>
+        </tr>
+      </table>
+
+      <div class="section-title">Bugs encontrados y corregidos durante la corrida</div>
+
+      <div class="bug">
+        <strong>Bug crítico: claim 500 por services nil</strong>
+        <p>Con <code>WORKER_CAPABILITIES={"echo": true}</code> (sin el array <code>services</code>), <code>caps.Services</code> quedaba nil → <code>json.Marshal(nil)</code> → <code>"null"</code> → <code>jsonb_array_elements_text(null)</code> reventa con <code>SQLSTATE 22023</code>. Ningún test lo atrapó porque todos los workers de prueba siempre mandaban un <code>services</code> array. Corregido con guarda: <code>len(caps.Services) == 0 → no job</code>. <em>Lección: los tests prueban el contrato que imaginaste; el hardware prueba el que escribiste.</em></p>
+      </div>
+
+      <div class="bug">
+        <strong>API bindeada a 127.0.0.1 — misma que F2</strong>
+        <p>El deploy del VPS publicó la API en loopback; ialab no la alcanzaba por Tailscale. <em>Exactamente</em> el mismo problema que la retro de F2 documentó como aprendizaje. La regla <em>"los servicios cross-node se ligan a la IP Tailscale"</em> quedó en una retro que no se releyó. Corregido en <code>deploy/vps/docker-compose.yml</code> + <code>docs/PORTS.md</code>.</p>
+      </div>
+
+      <div class="bug">
+        <strong>env_file en /etc/ exige root en ialab</strong>
+        <p>El usuario de ialab no puede escribir en <code>/etc/ai-platform/</code> sin sudo. Añadido fallback a <code>~/.config/ai-platform/worker-echo.env</code> (user-writable) en el compose.</p>
+      </div>
+
+      <div class="bug">
+        <strong>docker compose restart no re-lee env_file</strong>
+        <p>Reutiliza la config del contenedor anterior. Para aplicar cambios de entorno hay que <code>docker compose up -d</code> (recrea el contenedor). El escenario 3 usó <code>up -d</code>. Documentado como nota operativa.</p>
+      </div>
+
+      <div class="section-title">Archivos creados</div>
+      <ul class="file-list">
+        <li><span class="file-name">docs/RUNBOOKS/e2e-f3.md</span> <span class="file-new">NEW</span><span class="file-desc">— Runbook con los 4 escenarios, comandos exactos y SQL de verificación</span></li>
+        <li><span class="file-name">docs/RUNBOOKS/e2e-f3-results.md</span> <span class="file-new">NEW</span><span class="file-desc">— Registro de la corrida: estado inicial, 4 correcciones aplicadas, tabla de resultados 4/4 PASS</span></li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- T3.13 -->
+  <div class="task" onclick="this.classList.toggle('open')">
+    <div class="task-header">
+      <div class="task-id">T3.13</div>
+      <div class="task-meta">
+        <div class="task-title">Documentación operativa del scaffold y de worker-echo</div>
+        <div class="task-desc">workers/README.md, IALAB.md y PROJECT.md actualizados. Cualquier desarrollador puede crear un worker nuevo siguiendo la doc.</div>
+        <div class="task-chips">
+          <span class="chip chip-doc">Documentación</span>
+          <span class="chip chip-time">2 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-13</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <div class="section-title">Archivos creados/modificados</div>
+      <ul class="file-list">
+        <li><span class="file-name">workers/README.md</span> <span class="file-new">NEW</span><span class="file-desc">— how-to dev: crear un worker sobre <code>worker_base</code>, contrato de <code>execute(job, ctx)</code>, tabla completa de variables de entorno (<code>WORKER_ID</code> estable destacado), ciclo de vida y graceful shutdown, tests/lint</span></li>
+        <li><span class="file-name">docs/IALAB.md</span><span class="file-desc">— fila <code>worker-echo</code> en tabla de servicios; nueva sección <strong>Workers (Docker Compose)</strong>: primer despliegue, operación (ps/logs/restart/stop/up), shutdown con requeue ≤90s, troubleshooting "el worker no reclama jobs"</span></li>
+        <li><span class="file-name">docs/PORTS.md</span><span class="file-desc">— binding del puerto de la API actualizado a IP Tailscale; nota de que workers usan <code>network_mode: host</code></span></li>
+        <li><span class="file-name">PROJECT.md</span><span class="file-desc">— F3 marcada ✅ Completada 2026-06-13; fase activa → F4; 4 decisiones de diseño de F3 registradas; próximos pasos reescritos para F4</span></li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- RETROSPECTIVA HIGHLIGHTS -->
+  <h2>Retrospectiva — aprendizajes clave</h2>
+
+  <div class="retro-grid">
+    <div class="retro-card">
+      <h3 class="good">Lo que funcionó bien</h3>
+      <ul>
+        <li><code>execute(job, ctx)</code> como única superficie: worker-echo en ~10 líneas sin tocar HTTP</li>
+        <li><code>threading.Event</code> para ciclo de vida: 24 tests del scaffold sin red ni servidor</li>
+        <li>No agregar endpoint "return to pending": heartbeat monitor de F1 lo cubre gratis</li>
+        <li><code>unnest($1::text[])</code> en IngestLogs: insert atómico del batch en una query</li>
+        <li><code>network_mode: host</code> + <code>required: false</code>: build sin credenciales, fallo claro al arrancar</li>
+      </ul>
+    </div>
+    <div class="retro-card">
+      <h3 class="lesson">Lo más difícil técnicamente</h3>
+      <ul>
+        <li>Razonar el graceful shutdown como problema distribuido, no como código</li>
+        <li>Aceptar que <code>execute()</code> no es interrumpible es correcto (fencing cubre el caso borde)</li>
+        <li><code>signal.signal()</code> solo desde el hilo principal → tests usan <code>os.kill(os.getpid(), SIGTERM)</code></li>
+        <li>Packaging Docker con uv: build backend innecesario, <code>__main__.py</code> es la solución</li>
+      </ul>
+    </div>
+    <div class="retro-card">
+      <h3 class="risk">Lo que tomó más tiempo</h3>
+      <ul>
+        <li>Plomería Docker con uv: <code>tool.uv.package</code> requiere build backend → revertir a <code>__main__.py</code></li>
+        <li>Defecto silencioso del Makefile desde F1: <code>make deploy</code> no reconstruía la imagen Go</li>
+        <li>E2E en hardware: 4 correcciones para pasar de "todo listo" a "4/4 verde"</li>
+        <li>Patrones de F2 que se repiten: bind a 127.0.0.1, plomería de entorno en ialab</li>
+      </ul>
+    </div>
+    <div class="retro-card">
+      <h3 class="risk">Riesgos que pasan a F4</h3>
+      <ul>
+        <li>Regla "bind a IP Tailscale" no codificada → se repitió igual que en F2</li>
+        <li>Validar capabilities en el <strong>registro</strong>, no solo en el claim (bug del <code>services</code> nil)</li>
+        <li>Ledger usa piso <code>vram_total - 500 MB</code>: overhead SO/drivers ~1.7 GB supera margen</li>
+        <li><code>httpx</code> sin cliente persistente: evaluar si la frecuencia de logs sube en F4 (whisper)</li>
+        <li><code>upload_file_metadata()</code> + <code>job_files</code> deferido a F4 (whisper produce archivos)</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- DEUDA TECNICA -->
+  <h2>Deuda técnica registrada para F4+</h2>
+
+  <div class="debt">
+    <strong style="color:#f6ad55;">Bug del claim con services nil — test pendiente</strong> — el fix usa guarda <code>len(caps.Services) == 0</code>, pero el caso <code>services</code> ausente/vacío no está cubierto por tests. También falta validar el shape de capabilities en el <strong>registro</strong>, no solo en el claim.
+  </div>
+  <div class="debt">
+    <strong style="color:#f6ad55;">Regla "bind a IP Tailscale" sin codificar</strong> — se repitió exactamente como en F2. Convertirla en check del deploy o regla explícita verificable en <code>docs/PORTS.md</code>, no en la memoria de una retro.
+  </div>
+  <div class="debt">
+    <strong style="color:#f6ad55;">Margen VRAM del ledger (VRAMMarginMB=500)</strong> — el overhead real del SO/drivers en ialab es ~1.7 GB > 500 MB. Whisper (F4) es el primer worker que reserva VRAM real; revisar el margen al integrar el primer model pesado.
+  </div>
+  <div class="debt">
+    <strong style="color:#f6ad55;">httpx sin cliente persistente (conexión por llamada)</strong> — para echo es irrelevante. Si la frecuencia de <code>log()</code> sube en F4 (whisper puede emitir muchas líneas durante la transcripción), evaluar <code>httpx.Client</code> persistente.
+  </div>
+  <div class="debt">
+    <strong style="color:#f6ad55;">upload_file_metadata() + job_files deferido</strong> — whisper produce archivos (VTT/SRT/JSON); el helper y el endpoint no existen aún. Se implementa en F4 junto con el servidor de archivos y el proxy del VPS (alcance ya previsto en el plan).
+  </div>
+  <div class="debt">
+    <strong style="color:#f6ad55;">Bootstrap del worker sin automatizar</strong> — obtener <code>WORKER_KEY</code> registrando con <code>ADMIN_KEY</code> sigue siendo manual. Misma deuda que el agente (retro F2 #3). Post-MVP si no se agregan nodos.
+  </div>
+  <div class="debt">
+    <strong style="color:#f6ad55;">Ruta de runtime de workers sin definir</strong> — doc con placeholder <code>&lt;repo&gt;/deploy/ialab/...</code>; inconsistente con <code>/opt/ai-platform</code> del agente. Definir al desplegar el primer worker pesado en F4.
+  </div>
+  <div class="debt">
+    <strong style="color:#f6ad55;">worker-echo demasiado rápido para demos de timing</strong> — el runbook e2e requiere meter <code>time.sleep(30)</code> a mano para ver el escenario de heartbeat con execute bloqueado. Añadir un modo "slow-echo" o job de prueba con sleep configurable antes de F4.
+  </div>
+
+  <!-- SIGUIENTE FASE -->
+  <h2>Siguiente fase — F4: Worker whisper</h2>
+
+  <div style="background:#1a1f2e;border:1px solid #2d3748;border-radius:10px;padding:1.4rem 1.6rem;margin-top:0.5rem;">
+    <p style="font-size:0.85rem;color:#a0aec0;margin-bottom:0.8rem;">Con F3 completada, el scaffold está probado con el <code>worker-echo</code> contra hardware real. F4 pone encima el primer worker de inferencia real: <strong>whisper</strong> para transcripción de audio.</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;font-size:0.82rem;margin-top:0.4rem;">
+      <div style="color:#a0aec0;">→ <code style="color:#63b3ed;">worker-whisper</code>: Dockerfile con CUDA + modelo Whisper</div>
+      <div style="color:#a0aec0;">→ Servidor de archivos + proxy del VPS + <code>job_files</code></div>
+      <div style="color:#a0aec0;">→ <code>upload_file_metadata()</code> y helper de archivos en el scaffold</div>
+      <div style="color:#a0aec0;">→ Fix del margen VRAM del ledger ante overhead real de drivers</div>
+      <div style="color:#a0aec0;">→ E2E con transcripción real: audio → VTT/SRT/JSON en la API</div>
+      <div style="color:#a0aec0;">→ Validación de capabilities en el registro (deuda T3.12)</div>
+    </div>
+  </div>
+
+</div>
+
+<div class="footer">
+  Generado el 2026-06-15 &mdash; AI Worker Platform feature/f3 &mdash; docs/HTML/f3-implementacion.html
+</div>
+
+<script>
+  // Las tareas abiertas por defecto ya tienen la clase .open inline.
+  // El onclick en .task-header ya hace toggle. Este script maneja el click
+  // en el header para no propagar al body.
+  document.querySelectorAll('.task-header').forEach(header => {
+    header.addEventListener('click', (e) => {
+      e.stopPropagation();
+      header.closest('.task').classList.toggle('open');
+    });
+  });
+  // Evita que el click en el task-body cierre el card.
+  document.querySelectorAll('.task-body').forEach(body => {
+    body.addEventListener('click', (e) => e.stopPropagation());
+  });
+</script>
+
+</body>
+</html>

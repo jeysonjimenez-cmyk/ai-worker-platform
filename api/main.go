@@ -35,7 +35,7 @@ func main() {
 	defer pool.Close()
 
 	dispatcher := webhook.New()
-	jobsHandler := jobsh.NewHandler(pool, dispatcher)
+	jobsHandler := jobsh.NewHandler(pool, dispatcher, cfg.FileServerURL)
 	workersHandler := workersh.NewHandler(pool, cfg.VRAMMarginMB, cfg.VRAMDriftMarginMB)
 
 	mux := http.NewServeMux()
@@ -54,6 +54,7 @@ func main() {
 	appMW := func(h http.HandlerFunc) http.Handler { return auth.RequireApp(pool, h) }
 	mux.Handle("POST /ai/jobs", appMW(jobsHandler.Create))
 	mux.Handle("GET /ai/jobs/{id}", appMW(jobsHandler.GetByID))
+	mux.Handle("GET /ai/jobs/{id}/files/{filename}", appMW(jobsHandler.GetFile))
 	mux.Handle("POST /ai/jobs/{id}/cancel", appMW(jobsHandler.Cancel))
 
 	// Worker endpoints.
@@ -68,6 +69,7 @@ func main() {
 	mux.Handle("PATCH /ai/jobs/{id}/progress", workerMW(jobsHandler.UpdateProgress))
 	mux.Handle("PATCH /ai/jobs/{id}/complete", workerMW(jobsHandler.Complete))
 	mux.Handle("POST /ai/jobs/{id}/logs", workerMW(jobsHandler.IngestLogs))
+	mux.Handle("POST /ai/jobs/{id}/files", workerMW(jobsHandler.RegisterFile))
 
 	// Start heartbeat monitor and retention job.
 	go monitor.Run(ctx, pool)

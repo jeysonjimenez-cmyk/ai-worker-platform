@@ -12,6 +12,7 @@ type Config struct {
 	AdminAPIKey       string
 	VRAMMarginMB      int
 	VRAMDriftMarginMB int
+	FileServerURL     string
 }
 
 func Load() (*Config, error) {
@@ -33,11 +34,19 @@ func Load() (*Config, error) {
 			driftMargin = v
 		}
 	}
+	// T4.9: allow adjusting VRAM margin after measuring real model overhead.
+	vramMargin := 500
+	if s := os.Getenv("VRAM_MARGIN_MB"); s != "" {
+		if v, err := strconv.Atoi(s); err == nil && v >= 0 {
+			vramMargin = v
+		}
+	}
 	return &Config{
 		DatabaseURL:       dbURL,
 		ListenAddr:        addr,
 		AdminAPIKey:       adminKey,
-		VRAMMarginMB:      500,
+		VRAMMarginMB:      vramMargin,
 		VRAMDriftMarginMB: driftMargin,
+		FileServerURL:     os.Getenv("FILE_SERVER_URL"),
 	}, nil
 }

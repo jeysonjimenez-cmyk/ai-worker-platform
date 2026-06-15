@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -189,10 +191,10 @@ func seedTestData(t *testing.T, pool *pgxpool.Pool) {
 	}
 }
 
-func buildServer(t *testing.T, pool *pgxpool.Pool) *httptest.Server {
+func buildServer(t *testing.T, pool *pgxpool.Pool, fileServerURL string) *httptest.Server {
 	t.Helper()
 	dispatcher := webhook.New()
-	jobsHandler := jobs.NewHandler(pool, dispatcher)
+	jobsHandler := jobs.NewHandler(pool, dispatcher, fileServerURL)
 	workersHandler := workersh.NewHandler(pool, 0, 0) // no vram margin for tests
 
 	mux := http.NewServeMux()
@@ -202,6 +204,7 @@ func buildServer(t *testing.T, pool *pgxpool.Pool) *httptest.Server {
 
 	mux.Handle("POST /ai/jobs", appMW(jobsHandler.Create))
 	mux.Handle("GET /ai/jobs/{id}", appMW(jobsHandler.GetByID))
+	mux.Handle("GET /ai/jobs/{id}/files/{filename}", appMW(jobsHandler.GetFile))
 	mux.Handle("POST /ai/jobs/{id}/cancel", appMW(jobsHandler.Cancel))
 	mux.Handle("POST /workers/register", adminMW(workersHandler.Register))
 	mux.Handle("POST /workers/{id}/heartbeat", workerMW(workersHandler.Heartbeat))
@@ -211,6 +214,7 @@ func buildServer(t *testing.T, pool *pgxpool.Pool) *httptest.Server {
 	mux.Handle("PATCH /ai/jobs/{id}/progress", workerMW(jobsHandler.UpdateProgress))
 	mux.Handle("PATCH /ai/jobs/{id}/complete", workerMW(jobsHandler.Complete))
 	mux.Handle("POST /ai/jobs/{id}/logs", workerMW(jobsHandler.IngestLogs))
+	mux.Handle("POST /ai/jobs/{id}/files", workerMW(jobsHandler.RegisterFile))
 
 	return httptest.NewServer(mux)
 }
@@ -265,7 +269,7 @@ func decodeJob(t *testing.T, resp *http.Response) map[string]any {
 func TestAuth_MissingKey(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
-	srv := buildServer(t, pool)
+	srv := buildServer(t, pool, "")
 	defer srv.Close()
 
 	req, _ := http.NewRequest("POST", srv.URL+"/ai/jobs", strings.NewReader(`{"service":"llm_chat"}`))
@@ -279,7 +283,7 @@ func TestAuth_MissingKey(t *testing.T) {
 func TestAuth_WrongRoleAppOnWorkerEndpoint(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
-	srv := buildServer(t, pool)
+	srv := buildServer(t, pool, "")
 	defer srv.Close()
 
 	resp := post(t, srv, "/workers/register", "X-App-Key", appKey, map[string]any{
@@ -295,7 +299,7 @@ func TestAuth_WrongRoleAppOnWorkerEndpoint(t *testing.T) {
 func TestCreateJob_MissingService(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
-	srv := buildServer(t, pool)
+	srv := buildServer(t, pool, "")
 	defer srv.Close()
 
 	resp := post(t, srv, "/ai/jobs", "X-App-Key", appKey, map[string]any{"priority": "normal"})
@@ -308,7 +312,7 @@ func TestCreateJob_MissingService(t *testing.T) {
 func TestCreateJob_SSRFWebhook(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
-	srv := buildServer(t, pool)
+	srv := buildServer(t, pool, "")
 	defer srv.Close()
 
 	cases := []struct {
@@ -335,7 +339,7 @@ func TestCreateJob_SSRFWebhook(t *testing.T) {
 func TestCreateJob_PriorityMapping(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
-	srv := buildServer(t, pool)
+	srv := buildServer(t, pool, "")
 	defer srv.Close()
 
 	cases := []struct{ priority string; expected float64 }{
@@ -355,7 +359,7 @@ func TestCreateJob_PriorityMapping(t *testing.T) {
 func TestGetJob_NotFound(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
-	srv := buildServer(t, pool)
+	srv := buildServer(t, pool, "")
 	defer srv.Close()
 
 	resp := get(t, srv, "/ai/jobs/nonexistent", "X-App-Key", appKey)
@@ -383,7 +387,7 @@ func registerWorker(t *testing.T, srv *httptest.Server, id, wKey string, caps ma
 func TestWorkerRegister_Idempotent(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
-	srv := buildServer(t, pool)
+	srv := buildServer(t, pool, "")
 	defer srv.Close()
 
 	caps := map[string]any{"services": []string{"llm_chat"}, "cuda": false, "vram_total_mb": 0}
@@ -400,7 +404,7 @@ func TestWorkerRegister_Idempotent(t *testing.T) {
 func TestWorkerHeartbeat_NotFound(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
-	srv := buildServer(t, pool)
+	srv := buildServer(t, pool, "")
 	defer srv.Close()
 
 	// Register with key first so auth passes, but heartbeat for unknown id.
@@ -416,7 +420,7 @@ func TestWorkerHeartbeat_NotFound(t *testing.T) {
 func TestWorkerRegister_ExplicitGPUID(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
-	srv := buildServer(t, pool)
+	srv := buildServer(t, pool, "")
 	defer srv.Close()
 
 	gpuID := "ialab/rtx4070ti"
@@ -468,7 +472,7 @@ func TestWorkerRegister_ExplicitGPUID(t *testing.T) {
 func TestClaim_BasicFlow(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
-	srv := buildServer(t, pool)
+	srv := buildServer(t, pool, "")
 	defer srv.Close()
 
 	caps := map[string]any{"services": []string{"llm_chat"}, "cuda": false, "vram_total_mb": 0}
@@ -498,7 +502,7 @@ func TestClaim_BasicFlow(t *testing.T) {
 func TestClaim_VRAMNotEnough(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
-	srv := buildServer(t, pool)
+	srv := buildServer(t, pool, "")
 	defer srv.Close()
 
 	// Register a worker with GPU (1000 MB total).
@@ -525,7 +529,7 @@ func TestClaim_VRAMNotEnough(t *testing.T) {
 func TestClaim_ServiceMismatch(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
-	srv := buildServer(t, pool)
+	srv := buildServer(t, pool, "")
 	defer srv.Close()
 
 	caps := map[string]any{"services": []string{"tts"}, "cuda": false, "vram_total_mb": 0}
@@ -585,7 +589,7 @@ func TestReleaseVRAM_DoubleRelease(t *testing.T) {
 func TestProgressFencing(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
-	srv := buildServer(t, pool)
+	srv := buildServer(t, pool, "")
 	defer srv.Close()
 
 	// Set up two workers.
@@ -610,7 +614,7 @@ func TestProgressFencing(t *testing.T) {
 func TestCompleteFencing(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
-	srv := buildServer(t, pool)
+	srv := buildServer(t, pool, "")
 	defer srv.Close()
 
 	caps := map[string]any{"services": []string{"llm_chat"}, "cuda": false, "vram_total_mb": 0}
@@ -636,7 +640,7 @@ func TestCompleteFencing(t *testing.T) {
 func TestCancelJob(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
-	srv := buildServer(t, pool)
+	srv := buildServer(t, pool, "")
 	defer srv.Close()
 
 	// Cancel pending job.
@@ -671,7 +675,7 @@ func TestCancelJob(t *testing.T) {
 func TestCancelByWrongApp(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
-	srv := buildServer(t, pool)
+	srv := buildServer(t, pool, "")
 	defer srv.Close()
 
 	// Create a second app.
@@ -764,7 +768,7 @@ func TestVRAMLedgerRace(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
 	ctx := context.Background()
-	srv := buildServer(t, pool)
+	srv := buildServer(t, pool, "")
 	defer srv.Close()
 
 	// One GPU with 10000 MB.
@@ -833,7 +837,7 @@ func TestHeartbeatTimeout(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
 	ctx := context.Background()
-	srv := buildServer(t, pool)
+	srv := buildServer(t, pool, "")
 	defer srv.Close()
 
 	caps := map[string]any{"services": []string{"llm_chat"}, "cuda": false, "vram_total_mb": 0}
@@ -881,7 +885,7 @@ func TestHeartbeatTimeout(t *testing.T) {
 func TestEndToEndLifecycle(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
-	srv := buildServer(t, pool)
+	srv := buildServer(t, pool, "")
 	defer srv.Close()
 
 	caps := map[string]any{"services": []string{"llm_chat"}, "cuda": false, "vram_total_mb": 0}
@@ -947,7 +951,7 @@ func TestEndToEndLifecycle(t *testing.T) {
 func TestIngestMetrics_Single(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
-	srv := buildServer(t, pool)
+	srv := buildServer(t, pool, "")
 	defer srv.Close()
 
 	registerWorker(t, srv, "w-met", "wk-met", map[string]any{"services": []string{"llm_chat"}, "cuda": true, "vram_total_mb": 16000})
@@ -1024,7 +1028,7 @@ func TestIngestMetrics_Single(t *testing.T) {
 func TestIngestMetrics_Batch(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
-	srv := buildServer(t, pool)
+	srv := buildServer(t, pool, "")
 	defer srv.Close()
 
 	registerWorker(t, srv, "w-batch", "wk-batch", map[string]any{"services": []string{"llm_chat"}, "cuda": false, "vram_total_mb": 0})
@@ -1061,7 +1065,7 @@ func TestIngestMetrics_Batch(t *testing.T) {
 func TestIngestMetrics_MissingRecordedAt(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
-	srv := buildServer(t, pool)
+	srv := buildServer(t, pool, "")
 	defer srv.Close()
 
 	registerWorker(t, srv, "w-notime", "wk-notime", map[string]any{"services": []string{"llm_chat"}, "cuda": false, "vram_total_mb": 0})
@@ -1078,7 +1082,7 @@ func TestIngestMetrics_MissingRecordedAt(t *testing.T) {
 func TestIngestMetrics_WrongWorker(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
-	srv := buildServer(t, pool)
+	srv := buildServer(t, pool, "")
 	defer srv.Close()
 
 	registerWorker(t, srv, "w-own", "wk-own", map[string]any{"services": []string{"llm_chat"}, "cuda": false, "vram_total_mb": 0})
@@ -1097,7 +1101,7 @@ func TestIngestMetrics_WrongWorker(t *testing.T) {
 func TestIngestMetrics_NoWorkerKey(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
-	srv := buildServer(t, pool)
+	srv := buildServer(t, pool, "")
 	defer srv.Close()
 
 	// No key at all → 401.
@@ -1121,7 +1125,7 @@ func TestIngestMetrics_NoWorkerKey(t *testing.T) {
 func TestIngestMetrics_NoGPUFields(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
-	srv := buildServer(t, pool)
+	srv := buildServer(t, pool, "")
 	defer srv.Close()
 
 	// Node without GPU: only CPU/RAM fields, GPU fields absent (null in DB).
@@ -1312,7 +1316,7 @@ func TestRetentionCompact_NothingToDo(t *testing.T) {
 func TestMetricsBufferFlushPreservesTimestamps(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
-	srv := buildServer(t, pool)
+	srv := buildServer(t, pool, "")
 	defer srv.Close()
 
 	registerWorker(t, srv, "w-resilience", "wk-resilience", map[string]any{
@@ -1419,7 +1423,7 @@ func TestMetricsBufferFlushPreservesTimestamps(t *testing.T) {
 func TestIngestLogs_OwnerInserts(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
-	srv := buildServer(t, pool)
+	srv := buildServer(t, pool, "")
 	defer srv.Close()
 
 	caps := map[string]any{"services": []string{"echo"}, "cuda": false, "vram_total_mb": 0}
@@ -1465,7 +1469,7 @@ func TestIngestLogs_OwnerInserts(t *testing.T) {
 func TestIngestLogs_Fencing_WrongWorker(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
-	srv := buildServer(t, pool)
+	srv := buildServer(t, pool, "")
 	defer srv.Close()
 
 	caps := map[string]any{"services": []string{"echo"}, "cuda": false, "vram_total_mb": 0}
@@ -1494,7 +1498,7 @@ func TestIngestLogs_Fencing_WrongWorker(t *testing.T) {
 func TestIngestLogs_MissingWorkerKey(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
-	srv := buildServer(t, pool)
+	srv := buildServer(t, pool, "")
 	defer srv.Close()
 
 	req, _ := http.NewRequest("POST", srv.URL+"/ai/jobs/any-id/logs",
@@ -1513,7 +1517,7 @@ func TestIngestLogs_MissingWorkerKey(t *testing.T) {
 func TestIngestLogs_InvalidPayload(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
-	srv := buildServer(t, pool)
+	srv := buildServer(t, pool, "")
 	defer srv.Close()
 
 	caps := map[string]any{"services": []string{"echo"}, "cuda": false, "vram_total_mb": 0}
@@ -1534,4 +1538,509 @@ func TestIngestLogs_InvalidPayload(t *testing.T) {
 		t.Errorf("missing message: expected 422, got %d", resp2.StatusCode)
 	}
 	resp2.Body.Close()
+}
+
+// ─── T4.3 job_files registration tests ───
+
+func TestRegisterFile_Valid(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	srv := buildServer(t, pool, "")
+	defer srv.Close()
+
+	caps := map[string]any{"services": []string{"transcription"}, "cuda": false, "vram_total_mb": 0}
+	registerWorker(t, srv, "w-files", "wk-files", caps)
+
+	// Create and claim a job.
+	cResp := post(t, srv, "/ai/jobs", "X-App-Key", appKey, map[string]any{
+		"service": "transcription", "requirements": map[string]int{"min_vram_mb": 0},
+	})
+	job := decodeJob(t, cResp)
+	jobID := job["id"].(string)
+	post(t, srv, "/workers/w-files/claim", "X-Worker-Key", "wk-files", nil).Body.Close()
+
+	// Register a file.
+	size := int64(12345)
+	resp := post(t, srv, "/ai/jobs/"+jobID+"/files", "X-Worker-Key", "wk-files", map[string]any{
+		"filename":   "output.vtt",
+		"path":       "files/" + jobID + "/output.vtt",
+		"size_bytes": size,
+	})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	// Verify row in job_files.
+	var fname, path string
+	var sizeBytes int64
+	err := pool.QueryRow(context.Background(),
+		`SELECT filename, path, size_bytes FROM job_files WHERE job_id = $1`, jobID,
+	).Scan(&fname, &path, &sizeBytes)
+	if err != nil {
+		t.Fatalf("query job_files: %v", err)
+	}
+	if fname != "output.vtt" {
+		t.Errorf("filename: expected output.vtt, got %s", fname)
+	}
+	if sizeBytes != size {
+		t.Errorf("size_bytes: expected %d, got %d", size, sizeBytes)
+	}
+}
+
+func TestRegisterFile_Upsert(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	srv := buildServer(t, pool, "")
+	defer srv.Close()
+
+	caps := map[string]any{"services": []string{"transcription"}, "cuda": false, "vram_total_mb": 0}
+	registerWorker(t, srv, "w-upsert", "wk-upsert", caps)
+
+	cResp := post(t, srv, "/ai/jobs", "X-App-Key", appKey, map[string]any{
+		"service": "transcription", "requirements": map[string]int{"min_vram_mb": 0},
+	})
+	job := decodeJob(t, cResp)
+	jobID := job["id"].(string)
+	post(t, srv, "/workers/w-upsert/claim", "X-Worker-Key", "wk-upsert", nil).Body.Close()
+
+	// Register same filename twice (idempotent update).
+	for _, size := range []int64{100, 200} {
+		resp := post(t, srv, "/ai/jobs/"+jobID+"/files", "X-Worker-Key", "wk-upsert", map[string]any{
+			"filename": "output.vtt", "path": "files/" + jobID + "/output.vtt", "size_bytes": size,
+		})
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("upsert size=%d: expected 201, got %d", size, resp.StatusCode)
+		}
+		resp.Body.Close()
+	}
+
+	var count int
+	pool.QueryRow(context.Background(), `SELECT count(*) FROM job_files WHERE job_id=$1`, jobID).Scan(&count)
+	if count != 1 {
+		t.Errorf("upsert: expected 1 row, got %d", count)
+	}
+}
+
+func TestRegisterFile_Fencing_WrongWorker(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	srv := buildServer(t, pool, "")
+	defer srv.Close()
+
+	caps := map[string]any{"services": []string{"transcription"}, "cuda": false, "vram_total_mb": 0}
+	registerWorker(t, srv, "w-owner2", "wk-owner2", caps)
+	registerWorker(t, srv, "w-other2", "wk-other2", caps)
+
+	cResp := post(t, srv, "/ai/jobs", "X-App-Key", appKey, map[string]any{
+		"service": "transcription", "requirements": map[string]int{"min_vram_mb": 0},
+	})
+	job := decodeJob(t, cResp)
+	jobID := job["id"].(string)
+	post(t, srv, "/workers/w-owner2/claim", "X-Worker-Key", "wk-owner2", nil).Body.Close()
+
+	// w-other2 tries to register a file for w-owner2's job → 409.
+	resp := post(t, srv, "/ai/jobs/"+jobID+"/files", "X-Worker-Key", "wk-other2", map[string]any{
+		"filename": "steal.vtt", "path": "files/" + jobID + "/steal.vtt",
+	})
+	if resp.StatusCode != http.StatusConflict {
+		t.Errorf("fencing: expected 409, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+}
+
+func TestRegisterFile_MissingWorkerKey(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	srv := buildServer(t, pool, "")
+	defer srv.Close()
+
+	req, _ := http.NewRequest("POST", srv.URL+"/ai/jobs/any-id/files",
+		strings.NewReader(`{"filename":"f.vtt","path":"p"}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", resp.StatusCode)
+	}
+}
+
+func TestRegisterFile_InvalidPayload(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	srv := buildServer(t, pool, "")
+	defer srv.Close()
+
+	caps := map[string]any{"services": []string{"transcription"}, "cuda": false, "vram_total_mb": 0}
+	registerWorker(t, srv, "w-bad", "wk-bad", caps)
+
+	// Missing filename → 422.
+	resp := post(t, srv, "/ai/jobs/any-id/files", "X-Worker-Key", "wk-bad", map[string]any{
+		"path": "files/any-id/output.vtt",
+	})
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("missing filename: expected 422, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	// Missing path → 422.
+	resp2 := post(t, srv, "/ai/jobs/any-id/files", "X-Worker-Key", "wk-bad", map[string]any{
+		"filename": "output.vtt",
+	})
+	if resp2.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("missing path: expected 422, got %d", resp2.StatusCode)
+	}
+	resp2.Body.Close()
+}
+
+// ─── T4.7: file proxy tests ───
+
+func TestGetFile_FileServerDown_503(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	// Open a listener, capture the address, then close it so nothing is listening there.
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	downURL := "http://" + l.Addr().String()
+	l.Close()
+
+	srv := buildServer(t, pool, downURL)
+	defer srv.Close()
+
+	// Create a job owned by the test app.
+	cResp := post(t, srv, "/ai/jobs", "X-App-Key", appKey, map[string]any{
+		"service": "transcription", "requirements": map[string]int{"min_vram_mb": 0},
+	})
+	job := decodeJob(t, cResp)
+	jobID := job["id"].(string)
+
+	resp := get(t, srv, "/ai/jobs/"+jobID+"/files/output.vtt", "X-App-Key", appKey)
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("expected 503 when file server is down, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+}
+
+func TestGetFile_Success_Proxy(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	// The job's app field must be the apps.id UUID (what the auth middleware stores).
+	var testAppUUID string
+	pool.QueryRow(ctx, `SELECT id FROM apps WHERE api_key = $1`, appKey).Scan(&testAppUUID)
+
+	j, err := jobs.Create(ctx, pool, jobs.CreateParams{
+		App: testAppUUID, Service: "transcription", Priority: 5,
+	})
+	if err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+
+	content := "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHello world"
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/files/"+j.ID+"/output.vtt" {
+			w.Header().Set("Content-Type", "text/vtt")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(content))
+		} else {
+			http.NotFound(w, r)
+		}
+	}))
+	defer mockServer.Close()
+
+	srv := buildServer(t, pool, mockServer.URL)
+	defer srv.Close()
+
+	resp := get(t, srv, "/ai/jobs/"+j.ID+"/files/output.vtt", "X-App-Key", appKey)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if string(body) != content {
+		t.Errorf("expected body %q, got %q", content, string(body))
+	}
+}
+
+func TestGetFile_WrongApp_404(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	srv := buildServer(t, pool, "http://127.0.0.1:19999")
+	defer srv.Close()
+
+	// Job owned by a different app.
+	pool.Exec(ctx, `INSERT INTO apps (name, api_key) VALUES ('other', 'other-key')`)
+	j, _ := jobs.Create(ctx, pool, jobs.CreateParams{
+		App: "other", Service: "transcription", Priority: 5,
+	})
+
+	resp := get(t, srv, "/ai/jobs/"+j.ID+"/files/output.vtt", "X-App-Key", appKey)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("expected 404 for wrong app, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+}
+
+func TestGetFile_NoAuth_401(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	srv := buildServer(t, pool, "http://127.0.0.1:19999")
+	defer srv.Close()
+
+	req, _ := http.NewRequest("GET", srv.URL+"/ai/jobs/any-id/files/output.vtt", nil)
+	resp, _ := http.DefaultClient.Do(req)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+}
+
+func TestGetFile_NotConfigured_503(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	// fileServerURL = "" means not configured.
+	srv := buildServer(t, pool, "")
+	defer srv.Close()
+
+	cResp := post(t, srv, "/ai/jobs", "X-App-Key", appKey, map[string]any{
+		"service": "transcription", "requirements": map[string]int{"min_vram_mb": 0},
+	})
+	job := decodeJob(t, cResp)
+	jobID := job["id"].(string)
+
+	resp := get(t, srv, "/ai/jobs/"+jobID+"/files/output.vtt", "X-App-Key", appKey)
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("expected 503 when file server is not configured, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+}
+
+// ─── T4.8: job max-duration timeout tests ───
+
+func TestJobTimeout_ExhaustedRetries(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	pool.Exec(ctx, `INSERT INTO workers (id, hostname, status, capabilities, api_key)
+		VALUES ('w-jto', 'h', 'online', '{"services":["llm_chat"]}', 'wk-jto')`)
+
+	// max_retries=0: timeout should produce status=error directly.
+	j, _ := jobs.Create(ctx, pool, jobs.CreateParams{
+		App: "test-app", Service: "llm_chat", Priority: 5, MaxRetries: 0,
+	})
+	pool.Exec(ctx, `UPDATE jobs SET status='running', worker_id='w-jto',
+		started_at = now() - '2 hours'::interval, vram_released=false WHERE id=$1`, j.ID)
+
+	timedOut, err := jobs.FailTimedOutJobs(ctx, pool, map[string]time.Duration{
+		"llm_chat": 30 * time.Minute,
+	})
+	if err != nil {
+		t.Fatalf("FailTimedOutJobs: %v", err)
+	}
+	if len(timedOut) != 1 || timedOut[0] != j.ID {
+		t.Errorf("expected [%s], got %v", j.ID, timedOut)
+	}
+
+	var status, errMsg string
+	pool.QueryRow(ctx, `SELECT status, COALESCE(error_msg,'') FROM jobs WHERE id=$1`, j.ID).
+		Scan(&status, &errMsg)
+	if status != "error" {
+		t.Errorf("expected error, got %s", status)
+	}
+	if !strings.Contains(errMsg, "max job duration exceeded") {
+		t.Errorf("expected error_msg to mention max duration, got %q", errMsg)
+	}
+}
+
+func TestJobTimeout_SchedulesRetry(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	pool.Exec(ctx, `INSERT INTO workers (id, hostname, status, capabilities, api_key)
+		VALUES ('w-jtr', 'h', 'online', '{"services":["llm_chat"]}', 'wk-jtr')`)
+
+	// max_retries=2: first timeout should produce status=pending with retry_after.
+	j, _ := jobs.Create(ctx, pool, jobs.CreateParams{
+		App: "test-app", Service: "llm_chat", Priority: 5, MaxRetries: 2,
+	})
+	pool.Exec(ctx, `UPDATE jobs SET status='running', worker_id='w-jtr',
+		started_at = now() - '2 hours'::interval, vram_released=false WHERE id=$1`, j.ID)
+
+	timedOut, err := jobs.FailTimedOutJobs(ctx, pool, map[string]time.Duration{
+		"llm_chat": 30 * time.Minute,
+	})
+	if err != nil {
+		t.Fatalf("FailTimedOutJobs: %v", err)
+	}
+	if len(timedOut) != 1 {
+		t.Errorf("expected 1 timed-out job, got %d", len(timedOut))
+	}
+
+	var status string
+	var retryAfter *time.Time
+	pool.QueryRow(ctx, `SELECT status, retry_after FROM jobs WHERE id=$1`, j.ID).
+		Scan(&status, &retryAfter)
+	if status != "pending" {
+		t.Errorf("expected pending (retry scheduled), got %s", status)
+	}
+	if retryAfter == nil {
+		t.Error("expected retry_after to be set")
+	}
+}
+
+func TestJobTimeout_WithinLimit_NotAffected(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	pool.Exec(ctx, `INSERT INTO workers (id, hostname, status, capabilities, api_key)
+		VALUES ('w-fine', 'h', 'online', '{"services":["llm_chat"]}', 'wk-fine')`)
+
+	j, _ := jobs.Create(ctx, pool, jobs.CreateParams{
+		App: "test-app", Service: "llm_chat", Priority: 5, MaxRetries: 0,
+	})
+	// started_at = 5 minutes ago; limit is 30 minutes → should NOT be timed out.
+	pool.Exec(ctx, `UPDATE jobs SET status='running', worker_id='w-fine',
+		started_at = now() - '5 minutes'::interval, vram_released=false WHERE id=$1`, j.ID)
+
+	timedOut, err := jobs.FailTimedOutJobs(ctx, pool, map[string]time.Duration{
+		"llm_chat": 30 * time.Minute,
+	})
+	if err != nil {
+		t.Fatalf("FailTimedOutJobs: %v", err)
+	}
+	if len(timedOut) != 0 {
+		t.Errorf("expected no timed-out jobs, got %v", timedOut)
+	}
+
+	var status string
+	pool.QueryRow(ctx, `SELECT status FROM jobs WHERE id=$1`, j.ID).Scan(&status)
+	if status != "running" {
+		t.Errorf("job within limit must stay running, got %s", status)
+	}
+}
+
+func TestJobTimeout_ReleasesVRAM(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	gpuID := "testhost/gpu-0"
+	pool.Exec(ctx, `INSERT INTO gpus (id, hostname, vram_total_mb) VALUES ($1, 'testhost', 10000)`, gpuID)
+	pool.Exec(ctx, `INSERT INTO workers (id, hostname, status, capabilities, gpu_id, api_key)
+		VALUES ('w-vrel', 'testhost', 'online',
+		  '{"services":["transcription"],"cuda":true,"vram_total_mb":10000}',
+		  $1, 'wk-vrel')`, gpuID)
+	pool.Exec(ctx, `UPDATE gpus SET vram_reserved_mb = 5000 WHERE id = $1`, gpuID)
+
+	j, _ := jobs.Create(ctx, pool, jobs.CreateParams{
+		App: "test-app", Service: "transcription", Priority: 5, MaxRetries: 0,
+	})
+	pool.Exec(ctx, `UPDATE jobs SET status='running', worker_id='w-vrel',
+		started_at = now() - '5 hours'::interval, vram_released=false,
+		requirements = '{"min_vram_mb":5000}' WHERE id=$1`, j.ID)
+
+	_, err := jobs.FailTimedOutJobs(ctx, pool, map[string]time.Duration{
+		"transcription": 4 * time.Hour,
+	})
+	if err != nil {
+		t.Fatalf("FailTimedOutJobs: %v", err)
+	}
+
+	var reserved int
+	pool.QueryRow(ctx, `SELECT vram_reserved_mb FROM gpus WHERE id=$1`, gpuID).Scan(&reserved)
+	if reserved != 0 {
+		t.Errorf("expected vram_reserved_mb=0 after timeout, got %d", reserved)
+	}
+}
+
+// ─── T4.9: VRAM ledger piso verification ───
+
+func TestVRAMLedgerPiso_MarginRespected(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	// buildServer uses vramMargin=0; use a custom server with margin=500 to test piso.
+	dispatcher := webhook.New()
+	jobsHandler := jobs.NewHandler(pool, dispatcher, "")
+	workersHandler := workersh.NewHandler(pool, 500, 0) // 500 MB VRAM margin
+
+	mux := http.NewServeMux()
+	appMW := func(h http.HandlerFunc) http.Handler { return auth.RequireApp(pool, h) }
+	adminMW := func(h http.HandlerFunc) http.Handler { return auth.RequireAdmin(adminKey, h) }
+	workerMW := func(h http.HandlerFunc) http.Handler { return auth.RequireWorker(pool, h) }
+	mux.Handle("POST /ai/jobs", appMW(jobsHandler.Create))
+	mux.Handle("GET /ai/jobs/{id}/files/{filename}", appMW(jobsHandler.GetFile))
+	mux.Handle("POST /workers/register", adminMW(workersHandler.Register))
+	mux.Handle("POST /workers/{id}/claim", workerMW(workersHandler.Claim))
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	// GPU: 12000 MB total. With 500 MB margin → effective ceiling = 11500 MB.
+	gpuID := "testhost/rtx4070ti"
+	pool.Exec(ctx, `INSERT INTO gpus (id, hostname, vram_total_mb) VALUES ($1, 'testhost', 12000)`, gpuID)
+
+	// Register worker with this GPU.
+	resp := post(t, srv, "/workers/register", "X-Admin-Key", adminKey, map[string]any{
+		"id": "w-piso", "hostname": "testhost",
+		"capabilities": map[string]any{
+			"services":     []string{"transcription"},
+			"cuda":         true,
+			"vram_total_mb": 12000,
+		},
+		"api_key": "wk-piso",
+		"gpu_id":  gpuID,
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("register worker: expected 200, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	// Job requiring 11000 MB (realistic whisper-large VRAM).
+	// Available = 12000 - 0 reserved - 500 margin = 11500 >= 11000 → claim must succeed.
+	post(t, srv, "/ai/jobs", "X-App-Key", appKey, map[string]any{
+		"service":      "transcription",
+		"requirements": map[string]int{"min_vram_mb": 11000},
+	}).Body.Close()
+
+	claimResp := post(t, srv, "/workers/w-piso/claim", "X-Worker-Key", "wk-piso", nil)
+	if claimResp.StatusCode != http.StatusOK {
+		t.Fatalf("claim must succeed (11000 <= 11500 available), got %d", claimResp.StatusCode)
+	}
+	claimResp.Body.Close()
+
+	var reserved int
+	pool.QueryRow(ctx, `SELECT vram_reserved_mb FROM gpus WHERE id=$1`, gpuID).Scan(&reserved)
+	if reserved != 11000 {
+		t.Errorf("expected vram_reserved_mb=11000, got %d", reserved)
+	}
+
+	// Second job requires 1000 MB.
+	// Available = 12000 - 11000 reserved - 500 margin = 500 < 1000 → claim must fail.
+	post(t, srv, "/ai/jobs", "X-App-Key", appKey, map[string]any{
+		"service":      "transcription",
+		"requirements": map[string]int{"min_vram_mb": 1000},
+	}).Body.Close()
+
+	pool.Exec(ctx, `INSERT INTO workers (id, hostname, status, capabilities, gpu_id, api_key)
+		VALUES ('w-piso2', 'testhost', 'online',
+		  '{"services":["transcription"],"cuda":true,"vram_total_mb":12000}',
+		  $1, 'wk-piso2')`, gpuID)
+
+	claimResp2 := post(t, srv, "/workers/w-piso2/claim", "X-Worker-Key", "wk-piso2", nil)
+	if claimResp2.StatusCode != http.StatusNoContent {
+		t.Errorf("expected 204 (margin prevents over-reservation), got %d", claimResp2.StatusCode)
+	}
+	claimResp2.Body.Close()
 }

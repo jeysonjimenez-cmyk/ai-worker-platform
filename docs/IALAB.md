@@ -211,6 +211,80 @@ docker compose -f <repo>/deploy/ialab/docker-compose.yml up -d worker-echo
 
 Ver `workers/README.md` para la tabla completa de variables de entorno del worker.
 
+---
+
+### Primer despliegue de `worker-whisper`
+
+`worker-whisper` requiere GPU NVIDIA y el runtime `nvidia` de Docker instalado en el host.
+
+```bash
+# 1. Crear el archivo de entorno
+cp <repo>/deploy/ialab/worker-whisper.env.example ~/.config/ai-platform/worker-whisper.env
+$EDITOR ~/.config/ai-platform/worker-whisper.env
+# Rellenar WORKER_KEY, WORKER_ADMIN_KEY, WORKER_ID.
+# WORKER_CAPABILITIES: sustituir vram_total_mb por el valor real de nvidia-smi, no el placeholder.
+
+# 2. Build + arranque (worker-whisper y file-server comparten el volumen files_data)
+docker compose -f <repo>/deploy/ialab/docker-compose.yml up --build -d worker-whisper file-server
+```
+
+#### Variables de entorno de `worker-whisper`
+
+Archivo: `~/.config/ai-platform/worker-whisper.env` (o `/etc/ai-platform/worker-whisper.env`).  
+Plantilla en `deploy/ialab/worker-whisper.env.example`.
+
+| Variable | Requerida | Default | Descripción |
+|---|---|---|---|
+| `WORKER_API_URL` | Sí | — | URL base de la API en el VPS (vía Tailscale) |
+| `WORKER_KEY` | Sí | — | Worker key (`X-Worker-Key`) |
+| `WORKER_ADMIN_KEY` | Sí | — | Admin key para el registro inicial (`X-Admin-Key`) |
+| `WORKER_ID` | Sí | — | ID único y estable del worker (ej. `w-whisper-ialab`) |
+| `WORKER_CAPABILITIES` | Sí | — | JSON con `services:["transcription"]` y `vram_total_mb` real de `nvidia-smi` |
+| `WORKER_FILES_DIR` | No | `/app/files` | Directorio de salida dentro del contenedor (montado en `files_data`) |
+| `WHISPER_MODEL` | No | `large-v2` | Nombre del modelo faster-whisper |
+| `WHISPER_DEVICE` | No | `cuda` | Dispositivo de inferencia |
+| `WHISPER_COMPUTE_TYPE` | No | `float16` | Tipo de cómputo |
+| `WHISPER_IDLE_TIMEOUT` | No | `600` | Segundos de inactividad antes de descargar el modelo |
+| `AUDIO_MAX_SIZE_BYTES` | No | `2147483648` | Límite de tamaño del audio a descargar (2 GB) |
+
+#### Gestión del modelo
+
+El modelo se carga de forma **lazy** (al primer job, no al arrancar) y se **descarga automáticamente** tras `WHISPER_IDLE_TIMEOUT` segundos sin jobs. Al descargar llama `POST /workers/{id}/unload-model` para liberar la reserva en el ledger de VRAM.
+
+```bash
+# Verificar VRAM antes/durante/después de un job
+nvidia-smi --query-gpu=memory.used,memory.free --format=csv,noheader
+# Al primer job: memory.used sube ~10000 MB (large-v2)
+# Tras idle timeout: memory.used vuelve al baseline del SO
+```
+
+#### Directorio de archivos
+
+Los archivos de salida se escriben en el volumen `files_data` compartido con `file-server`:
+
+```
+files/{job_id}/output.vtt   — subtítulos WebVTT
+files/{job_id}/output.srt   — subtítulos SRT
+files/{job_id}/output.json  — segmentos con timestamps completos
+```
+
+Los metadatos (filename, path, tamaño) quedan registrados en `job_files` en la DB del VPS.
+
+#### Operación
+
+```bash
+# Estado
+docker compose -f <repo>/deploy/ialab/docker-compose.yml ps
+
+# Logs en vivo
+docker compose -f <repo>/deploy/ialab/docker-compose.yml logs -f worker-whisper
+
+# Reiniciar / parar / arrancar (un job en curso vuelve a pending en ≤90s)
+docker compose -f <repo>/deploy/ialab/docker-compose.yml restart worker-whisper
+docker compose -f <repo>/deploy/ialab/docker-compose.yml stop worker-whisper
+docker compose -f <repo>/deploy/ialab/docker-compose.yml up -d worker-whisper
+```
+
 ### Comportamiento ante shutdown
 
 `docker compose stop/restart` envía SIGTERM: el worker deja de reclamar y sale limpio. Si tenía
@@ -236,6 +310,63 @@ Causas frecuentes:
 - `WORKER_KEY`/`WORKER_ADMIN_KEY` inválidos → `401`/`403` en el registro o el claim.
 - `WORKER_CAPABILITIES` sin el service del job → el claim nunca devuelve trabajo (filtra por capabilities).
 - `WORKER_ID` distinto en cada arranque → workers duplicados en la tabla `workers` (usar un id estable).
+
+---
+
+## Servidor de archivos
+
+El servicio `file-server` sirve `files/{job_id}/*` en el puerto `8001`, **bindeado a la IP Tailscale** de ialab (`100.103.55.110`) — nunca a `0.0.0.0` ni `127.0.0.1`. Solo alcanzable desde el VPS.
+
+```bash
+# Verificar bind en ialab
+ss -tlnp | grep 8001
+# Esperado: LISTEN ... 100.103.55.110:8001
+
+# Acceder desde el VPS (vía Tailscale)
+curl -s http://100.103.55.110:8001/files/<job_id>/output.vtt | head -3
+
+# Arrancar / parar (normalmente corre junto con worker-whisper)
+docker compose -f <repo>/deploy/ialab/docker-compose.yml up -d file-server
+docker compose -f <repo>/deploy/ialab/docker-compose.yml stop file-server
+```
+
+Los clientes externos acceden a los archivos exclusivamente a través del **proxy de la API Go**:
+`GET /ai/jobs/{id}/files/{filename}` — el VPS hace streaming hacia ialab sin exponer ialab a internet.
+Con ialab o `file-server` apagados, el proxy devuelve `503` con mensaje claro.
+
+---
+
+## Transcripción — contrato y ejemplo curl
+
+```bash
+APP_KEY="<tu_app_key>"
+API="http://100.106.192.45:8081"
+
+# 1. Crear job de transcripción
+JOB_ID=$(curl -s -X POST $API/ai/jobs \
+  -H "Content-Type: application/json" \
+  -H "X-App-Key: $APP_KEY" \
+  -d '{"service":"transcription","payload":{"audio_url":"https://example.com/audio.mp3"}}' \
+  | jq -r .id)
+echo "job_id: $JOB_ID"
+
+# 2. Sondear progreso hasta done (audio de 1h: ~8–15 min de transcripción con large-v2)
+until curl -s $API/ai/jobs/$JOB_ID -H "X-App-Key: $APP_KEY" \
+    | jq -e '.status == "done"' > /dev/null; do
+  curl -s $API/ai/jobs/$JOB_ID -H "X-App-Key: $APP_KEY" | jq '{status,progress}'
+  sleep 30
+done
+
+# 3. Descargar archivos vía proxy (ialab no necesita ser alcanzable directamente por el cliente)
+curl -s "$API/ai/jobs/$JOB_ID/files/output.vtt"  -H "X-App-Key: $APP_KEY" -o output.vtt
+curl -s "$API/ai/jobs/$JOB_ID/files/output.srt"  -H "X-App-Key: $APP_KEY" -o output.srt
+curl -s "$API/ai/jobs/$JOB_ID/files/output.json" -H "X-App-Key: $APP_KEY" -o output.json
+```
+
+**Restricciones del `audio_url`:**
+- Solo `https://` (no `http://`).
+- No se permiten IPs privadas (RFC 1918) ni el rango Tailscale `100.64.0.0/10`.
+- Tamaño máximo configurable con `AUDIO_MAX_SIZE_BYTES` (default 2 GB).
 
 ---
 

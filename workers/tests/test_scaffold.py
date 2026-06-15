@@ -408,6 +408,95 @@ def test_log_helper_409_does_not_crash():
     scaffold.run()  # must not raise
 
 
+# ─── T4.3: upload_file_metadata() ────────────────────────────────────────────
+
+def test_upload_file_metadata_calls_api():
+    """upload_file_metadata() must call the files endpoint."""
+    file_calls = []
+
+    def execute(job, ctx):
+        ctx.upload_file_metadata("output.vtt", f"files/{job['id']}/output.vtt", size_bytes=1234)
+        return {}
+
+    scaffold = Scaffold(_cfg(), execute=execute)
+    scaffold._client.register = MagicMock(return_value=FakeResp(200))
+    scaffold._client.heartbeat = MagicMock(return_value=FakeResp(200))
+    scaffold._client.complete = MagicMock(return_value=FakeResp(200))
+    scaffold._client.upload_file_metadata = MagicMock(
+        side_effect=lambda jid, fname, path, size=None: file_calls.append(
+            {"job_id": jid, "filename": fname, "path": path, "size_bytes": size}
+        ) or FakeResp(201)
+    )
+
+    claim_count = [0]
+
+    def claim_fn(worker_id, wait):
+        claim_count[0] += 1
+        if claim_count[0] == 1:
+            return FakeResp(200, {"id": "j-file", "service": "transcription", "payload": {}})
+        scaffold._stop.set()
+        return FakeResp(204)
+
+    scaffold._client.claim = MagicMock(side_effect=claim_fn)
+    scaffold.run()
+
+    assert len(file_calls) == 1
+    assert file_calls[0]["filename"] == "output.vtt"
+    assert file_calls[0]["size_bytes"] == 1234
+
+
+def test_upload_file_metadata_409_does_not_crash():
+    """A 409 from upload_file_metadata must be discarded; the worker continues."""
+
+    def execute(job, ctx):
+        ctx.upload_file_metadata("output.vtt", "files/j/output.vtt")
+        return {}
+
+    scaffold = Scaffold(_cfg(), execute=execute)
+    scaffold._client.register = MagicMock(return_value=FakeResp(200))
+    scaffold._client.heartbeat = MagicMock(return_value=FakeResp(200))
+    scaffold._client.complete = MagicMock(return_value=FakeResp(200))
+    scaffold._client.upload_file_metadata = MagicMock(return_value=FakeResp(409))
+
+    claim_count = [0]
+
+    def claim_fn(worker_id, wait):
+        claim_count[0] += 1
+        if claim_count[0] == 1:
+            return FakeResp(200, {"id": "j-fmeta", "service": "transcription", "payload": {}})
+        scaffold._stop.set()
+        return FakeResp(204)
+
+    scaffold._client.claim = MagicMock(side_effect=claim_fn)
+    scaffold.run()  # must not raise
+
+
+def test_upload_file_metadata_network_error_does_not_crash():
+    """A network error in upload_file_metadata must be caught; the worker continues."""
+
+    def execute(job, ctx):
+        ctx.upload_file_metadata("output.vtt", "files/j/output.vtt")
+        return {}
+
+    scaffold = Scaffold(_cfg(), execute=execute)
+    scaffold._client.register = MagicMock(return_value=FakeResp(200))
+    scaffold._client.heartbeat = MagicMock(return_value=FakeResp(200))
+    scaffold._client.complete = MagicMock(return_value=FakeResp(200))
+    scaffold._client.upload_file_metadata = MagicMock(side_effect=Exception("connection refused"))
+
+    claim_count = [0]
+
+    def claim_fn(worker_id, wait):
+        claim_count[0] += 1
+        if claim_count[0] == 1:
+            return FakeResp(200, {"id": "j-fnet", "service": "transcription", "payload": {}})
+        scaffold._stop.set()
+        return FakeResp(204)
+
+    scaffold._client.claim = MagicMock(side_effect=claim_fn)
+    scaffold.run()  # must not raise
+
+
 # ─── T3.8: graceful shutdown via SIGTERM ─────────────────────────────────────
 
 def test_sigterm_stops_worker_with_no_job():

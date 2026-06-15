@@ -4,11 +4,13 @@ version = "0.1.0"
 description = "AI Worker Platform — worker scaffold and workers"
 requires-python = ">=3.12"
 dependencies = [
+    "faster-whisper>=1.2.1",
     "httpx>=0.28.0",
 ]
 
 [project.scripts]
 worker-echo = "worker_echo:main"
+worker-whisper = "worker_whisper:main"
 
 [dependency-groups]
 dev = [

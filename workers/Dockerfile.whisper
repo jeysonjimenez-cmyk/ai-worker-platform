@@ -1,0 +1,35 @@
+FROM nvidia/cuda:12.1.0-cudnn8-runtime-ubuntu22.04
+
+# Install Python 3.12 from deadsnakes PPA
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        software-properties-common ca-certificates curl \
+    && add-apt-repository ppa:deadsnakes/ppa \
+    && apt-get update && apt-get install -y --no-install-recommends \
+        python3.12 python3.12-venv \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:0.7.12 /uv /usr/local/bin/uv
+
+# Make python3.12 the default python
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.12 1
+
+WORKDIR /app
+
+# Copy dependency manifests first — cached unless deps change
+COPY pyproject.toml uv.lock ./
+
+# Install production dependencies into the project venv
+RUN uv sync --frozen --no-dev
+
+# Copy source after deps to keep the dep-install layer cached
+COPY worker_base/ ./worker_base/
+COPY worker_whisper/ ./worker_whisper/
+
+# Activate the venv so the container uses installed deps directly
+ENV PATH="/app/.venv/bin:$PATH"
+ENV WORKER_POLL_WAIT=30
+# GPU memory is measured and reported by the Node Agent — not baked in
+ENV WORKER_HEARTBEAT_INTERVAL=10
+
+CMD ["python", "-m", "worker_whisper"]

@@ -1,11 +1,11 @@
 # AI Worker Platform — Estado del proyecto
 
-> Última actualización: 2026-06-13
+> Última actualización: 2026-06-15
 > Arquitectura congelada en DESIGN.md v1.4. Plan de fases en IMPLEMENTATION_PLAN.md v1.2.
 
 ## Estado actual
 
-**Fase activa: F4 — worker-whisper**
+**Fase activa: F4.5 — SDK mínimo + Video Crack transcribe**
 
 | Fase | Estado | Fecha de cierre |
 |---|---|---|
@@ -13,13 +13,15 @@
 | F1 — API Go + schema PostgreSQL | ✅ Completada | 2026-06-10 |
 | F2 — Node Agent | ✅ Completada | 2026-06-11 |
 | F3 — Worker base Python (scaffold) | ✅ Completada y verificada en hardware¹ | 2026-06-13 |
-| F4 — worker-whisper | 🔄 Siguiente | — |
-| F4.5 — SDK mínimo + Video Crack transcribe | ⏳ Pendiente | — |
+| F4 — worker-whisper | ✅ Completada (e2e en hardware pendiente²) | 2026-06-15 |
+| F4.5 — SDK mínimo + Video Crack transcribe | 🔄 Siguiente | — |
 | F5 — Dashboard mínimo | ⏳ Pendiente | — |
 | F6 — worker-ollama | ⏳ Pendiente | — |
 | F7 — worker-tts + migración completa | ⏳ Pendiente | — |
 
 > ¹ Implementación F3 completa (T3.1–T3.13) y e2e en hardware ejecutado el 2026-06-13: **4/4 escenarios PASS** (`docs/RUNBOOKS/e2e-f3-results.md`). La corrida expuso y corrigió 4 defectos reales (bind a Tailscale, bug del claim con `services` nil, fallback del `env_file`, doc de puertos).
+
+> ² Implementación F4 completa (T4.1–T4.11). El checklist e2e (`docs/RUNBOOKS/e2e-f4-results.md`) está redactado y pendiente de ejecución contra hardware real (audio ≥1 hora, caos mid-job). T4.9 (calibración VRAM real de whisper) también queda pendiente de ejecución en ialab.
 
 ## Infraestructura activa
 
@@ -31,9 +33,11 @@
 ## Lo que está corriendo en producción
 
 - **PostgreSQL 17** en el VPS con las migraciones F0–F2 aplicadas (`0001_initial`, `0002_worker_metrics`, `0003_worker_metrics_hourly`)
-- **API Go** en el VPS: todos los endpoints de F1 + ingesta de métricas (F2) + retención (F2) + ingesta de logs de job `POST /ai/jobs/{id}/logs` (F3)
+- **API Go** en el VPS: todos los endpoints de F1 + ingesta de métricas (F2) + retención (F2) + ingesta de logs de job (F3) + registro de archivos en `job_files` (F4) + proxy de archivos `GET /ai/jobs/{id}/files/{filename}` (F4) + timeout máximo por job por service (F4)
 - **Node Agent** en ialab bajo systemd: reporte de métricas cada 10s, buffer de reconexión, endpoint `/metrics` en `100.103.55.110:9100`
-- **Scaffold `worker_base`** (F3): paquete Python reutilizable (registro, heartbeat en thread, claim long-poll, fencing, graceful shutdown). `worker-echo` corre en Docker en ialab vía `deploy/ialab/docker-compose.yml`
+- **Scaffold `worker_base`** (F3): paquete Python reutilizable (registro, heartbeat en thread, claim long-poll, fencing, graceful shutdown, `upload_file_metadata()`). `worker-echo` corre en Docker en ialab
+- **`worker-whisper`** (F4): faster-whisper (large-v2, CUDA), transcripción con progreso por segmentos, salida VTT/SRT/JSON, descarga de audio con validación SSRF, carga lazy del modelo + descarga por inactividad
+- **Servidor de archivos** (F4): `python -m http.server 8001` en ialab, bind a `100.103.55.110`, volumen `files_data` compartido con `worker-whisper`
 - **Deploy del VPS scripteado** (F3): `deploy/vps/deploy.sh` valida `.env` → `up --build` → healthcheck → `migrate up`
 
 ## Decisiones de diseño registradas
@@ -64,12 +68,10 @@
 | Margen de deriva ledger (`VRAM_DRIFT_MARGIN_MB`) | 512 MB (configurable) |
 | Retención de métricas crudas | 7 días → agrega a `worker_metrics_hourly` |
 
-## Próximos pasos (F4)
+## Próximos pasos (F4.5)
 
-Ver `docs/BACKLOG/f4.md` cuando se cree. Objetivos de la fase (worker-whisper):
-- `worker-whisper` (faster-whisper, CUDA, concurrency 1) sobre el scaffold de F3
-- Gestión de modelo: cargar al primer job, descargar tras inactividad (liberando la reserva del ledger)
-- Almacenamiento y servidor de archivos en ialab + proxy en el VPS (`GET /ai/jobs/{id}/files/{filename}`)
-- Helper `upload_file_metadata()` + registro en `job_files` (deferido de F3)
-- **Pendiente de F2/F3 para F4:** el claim usa el piso `vram_total_mb - VRAMMarginMB` (hoy 500 MB); con whisper (10 GB) revisar el margen efectivo contra el overhead real de ~1.7 GB del SO
-- **Deuda de F3 a atender en F4:** test del caso `WORKER_CAPABILITIES` sin array `services` (bug del claim que el e2e expuso); codificar la regla "bind a IP Tailscale, no `127.0.0.1`" como check de deploy; actualizar `deploy/ialab/worker-echo.env.example` con el `services` array.
+Ver `docs/BACKLOG/f4.md` (pendiente de crear para F4.5). Objetivos: SDK mínimo de cliente + integración con Video Crack para transcripción de vídeos reales.
+
+**Pendientes de F4 para ejecutar en ialab antes de cerrar:**
+- Checklist e2e hardware (`docs/RUNBOOKS/e2e-f4-results.md`): audio 1h, caos mid-job, concurrencia 1.
+- Calibración de `MIN_VRAM_TRANSCRIPTION_MB` y `VRAM_MARGIN_MB` con whisper-large en ialab (T4.9).
