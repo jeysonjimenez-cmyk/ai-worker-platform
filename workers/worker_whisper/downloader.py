@@ -10,6 +10,7 @@ Enforces the same policy as the Go ssrf package (F1):
 from __future__ import annotations
 
 import ipaddress
+import os
 import socket
 from pathlib import Path
 from urllib.parse import urlparse
@@ -68,7 +69,9 @@ def download(url: str, dest: str | Path, max_bytes: int = DEFAULT_MAX_BYTES) -> 
     Raises FileTooLargeError if Content-Length exceeds limit or stream grows past it.
     Raises httpx.HTTPStatusError on non-2xx responses.
     """
-    _validate_ssrf(url)
+    # ALLOW_HTTP_AUDIO bypasses SSRF for local e2e testing — never set in production.
+    if not os.getenv("ALLOW_HTTP_AUDIO"):
+        _validate_ssrf(url)
 
     with httpx.stream("GET", url, timeout=60, follow_redirects=True) as resp:
         resp.raise_for_status()

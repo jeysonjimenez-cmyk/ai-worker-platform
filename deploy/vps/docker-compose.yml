@@ -25,6 +25,8 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
       ADMIN_API_KEY: ${ADMIN_API_KEY}
       LISTEN_ADDR: ":8080"
+      FILE_SERVER_URL: ${FILE_SERVER_URL}
+      MIN_VRAM_TRANSCRIPTION_MB: ${MIN_VRAM_TRANSCRIPTION_MB}
     ports:
       # Tailscale IP — accessible from ialab workers, not exposed to internet
       - "100.106.192.45:8081:8080"

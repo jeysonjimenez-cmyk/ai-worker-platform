@@ -13,7 +13,7 @@
 | F1 — API Go + schema PostgreSQL | ✅ Completada | 2026-06-10 |
 | F2 — Node Agent | ✅ Completada | 2026-06-11 |
 | F3 — Worker base Python (scaffold) | ✅ Completada y verificada en hardware¹ | 2026-06-13 |
-| F4 — worker-whisper | ✅ Completada (e2e en hardware pendiente²) | 2026-06-15 |
+| F4 — worker-whisper | ✅ Completada y verificada en hardware³ | 2026-06-15 |
 | F4.5 — SDK mínimo + Video Crack transcribe | 🔄 Siguiente | — |
 | F5 — Dashboard mínimo | ⏳ Pendiente | — |
 | F6 — worker-ollama | ⏳ Pendiente | — |
@@ -21,7 +21,7 @@
 
 > ¹ Implementación F3 completa (T3.1–T3.13) y e2e en hardware ejecutado el 2026-06-13: **4/4 escenarios PASS** (`docs/RUNBOOKS/e2e-f3-results.md`). La corrida expuso y corrigió 4 defectos reales (bind a Tailscale, bug del claim con `services` nil, fallback del `env_file`, doc de puertos).
 
-> ² Implementación F4 completa (T4.1–T4.11). El checklist e2e (`docs/RUNBOOKS/e2e-f4-results.md`) está redactado y pendiente de ejecución contra hardware real (audio ≥1 hora, caos mid-job). T4.9 (calibración VRAM real de whisper) también queda pendiente de ejecución en ialab.
+> ³ Implementación F4 completa (T4.1–T4.11) y e2e en hardware ejecutado el 2026-06-15: **6/6 escenarios PASS** (`docs/RUNBOOKS/e2e-f4-results.md`). Audio real de 4.2h procesado (3131 segmentos), concurrencia 1 verificada, caos mid-job resuelto en 99s, 503 con file-server caído. T4.9 calibrado: `MIN_VRAM_TRANSCRIPTION_MB=5500` (medido: 4667 MB pico, anterior teórico 10000 MB).
 
 ## Infraestructura activa
 
@@ -72,6 +72,4 @@
 
 Ver `docs/BACKLOG/f4.md` (pendiente de crear para F4.5). Objetivos: SDK mínimo de cliente + integración con Video Crack para transcripción de vídeos reales.
 
-**Pendientes de F4 para ejecutar en ialab antes de cerrar:**
-- Checklist e2e hardware (`docs/RUNBOOKS/e2e-f4-results.md`): audio 1h, caos mid-job, concurrencia 1.
-- Calibración de `MIN_VRAM_TRANSCRIPTION_MB` y `VRAM_MARGIN_MB` con whisper-large en ialab (T4.9).
+**F4 cerrada.** Ver `docs/RETROSPECTIVES/f4.md` para lecciones y riesgos que pasan a F4.5.

@@ -1,5 +1,7 @@
 FROM nvidia/cuda:12.1.0-cudnn8-runtime-ubuntu22.04
 
+ENV DEBIAN_FRONTEND=noninteractive
+
 # Install Python 3.12 from deadsnakes PPA
 RUN apt-get update && apt-get install -y --no-install-recommends \
         software-properties-common ca-certificates curl \
