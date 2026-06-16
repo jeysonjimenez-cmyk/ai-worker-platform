@@ -93,15 +93,18 @@ migrate -path ./migrations -database $DATABASE_URL up
 
 ## Fase activa
 
-**Fase 2 — Node Agent** (`docs/BACKLOG/f2.md`)
+**F4.5 ✅ cerrada 2026-06-16** — SDK mínimo + Video Crack transcribe en producción.
+**Siguiente: F5 — Dashboard mínimo** (solapable con F6).
 
-Estado al 2026-06-11:
-- T2.1 ✅ `gpu_id` explícito en registro
-- T2.2 ✅ Borrar `ClaimResult`
-- T2.3 ✅ Endpoint de ingesta de métricas
-- T2.4 ✅ Scaffold agente + colección pynvml/psutil
-- T2.5 ✅ Endpoint local `/metrics` (MetricsServer, bind explícito)
-- T2.6 ✅ Registro del nodo y GPU(s) al arrancar
-- T2.7 ✅ Loop de reporte + buffer
-- T2.8 ✅ Unidad systemd
-- T2.9 ✅ Script de instalación + documentación en IALAB.md
+Estado al 2026-06-16:
+- F0–F4 ✅ cerradas
+- F4.5 ✅ cerrada — Video Crack transcribe vía plataforma (SSRF estricto, app key activa, corpus 5 videos PARIDAD_ACEPTABLE, caos recovery 54s)
+- F5 ⏳ Dashboard mínimo (`docs/BACKLOG/f5.md` pendiente de crear)
+- F6 ⏳ worker-ollama + Video Crack adopta traducción
+
+Postura de producción al cerrar F4.5:
+- `ALLOW_HTTP_AUDIO` removido de `~/.config/ai-platform/worker-whisper.env` en ialab
+- App key `video-crack` activa en DB del VPS (`docs/RUNBOOKS/f4.5-provisioning-apps.md`)
+- SSRF estricto verificado en producción (`docs/RUNBOOKS/f4.5-ssrf-production-posture.md`)
+- Runbook SQL para operar sin dashboard (`docs/RUNBOOKS/f4.5-ops-without-dashboard.md`)
+- VRAM pico calibrado: 5060 MiB (margen 440 MiB sobre MIN_VRAM_TRANSCRIPTION_MB=5500)

@@ -150,3 +150,38 @@ def test_download_ssrf_blocked_before_http_call(tmp_path):
         download("http://example.com/audio.mp3", dest)
     # File must not have been created
     assert not dest.exists()
+
+
+# ─── ALLOW_HTTP_AUDIO escape hatch tests (T4.5.7) ─────────────────────────────
+
+def test_ssrf_enforced_without_allow_http_audio(tmp_path, monkeypatch):
+    """Escape hatch inactive: ALLOW_HTTP_AUDIO absent → http:// is blocked by SSRF."""
+    monkeypatch.delenv("ALLOW_HTTP_AUDIO", raising=False)
+    dest = tmp_path / "audio.mp3"
+    with pytest.raises(SSRFError, match="must use https"):
+        download("http://example.com/audio.mp3", dest)
+    assert not dest.exists()
+
+
+def test_ssrf_enforced_tailscale_without_allow_http_audio(tmp_path, monkeypatch):
+    """Escape hatch inactive: ALLOW_HTTP_AUDIO absent → Tailscale IP is blocked by SSRF."""
+    monkeypatch.delenv("ALLOW_HTTP_AUDIO", raising=False)
+    dest = tmp_path / "audio.mp3"
+    with patch("socket.getaddrinfo") as mock_dns:
+        mock_dns.return_value = [(None, None, None, None, ("100.90.0.1", 0))]
+        with pytest.raises(SSRFError, match="blocked IP"):
+            download("https://audio.internal/audio.mp3", dest)
+    assert not dest.exists()
+
+
+def test_allow_http_audio_env_bypasses_ssrf(tmp_path, monkeypatch):
+    """Escape hatch active: ALLOW_HTTP_AUDIO set → http:// skips SSRF and reaches HTTP call.
+    This documents the bypass — the variable must NOT be set in production (T4.5.7)."""
+    monkeypatch.setenv("ALLOW_HTTP_AUDIO", "true")
+    dest = tmp_path / "audio.mp3"
+    data = b"audio bytes"
+    mock_resp = _mock_stream([data], headers={})
+    with patch("httpx.stream", return_value=mock_resp):
+        written = download("http://example.com/audio.mp3", dest, max_bytes=DEFAULT_MAX_BYTES)
+    assert written == len(data)
+    assert dest.read_bytes() == data

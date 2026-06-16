@@ -14,7 +14,7 @@
 | F2 — Node Agent | ✅ Completada | 2026-06-11 |
 | F3 — Worker base Python (scaffold) | ✅ Completada y verificada en hardware¹ | 2026-06-13 |
 | F4 — worker-whisper | ✅ Completada y verificada en hardware³ | 2026-06-15 |
-| F4.5 — SDK mínimo + Video Crack transcribe | 🔄 Siguiente | — |
+| F4.5 — SDK mínimo + Video Crack transcribe | ✅ Completada y verificada en producción⁴ | 2026-06-16 |
 | F5 — Dashboard mínimo | ⏳ Pendiente | — |
 | F6 — worker-ollama | ⏳ Pendiente | — |
 | F7 — worker-tts + migración completa | ⏳ Pendiente | — |
@@ -68,8 +68,11 @@
 | Margen de deriva ledger (`VRAM_DRIFT_MARGIN_MB`) | 512 MB (configurable) |
 | Retención de métricas crudas | 7 días → agrega a `worker_metrics_hourly` |
 
-## Próximos pasos (F4.5)
+## Próximos pasos (F5)
 
-Ver `docs/BACKLOG/f4.md` (pendiente de crear para F4.5). Objetivos: SDK mínimo de cliente + integración con Video Crack para transcripción de vídeos reales.
+**F5 — Dashboard mínimo** · Backlog pendiente de crear (`docs/BACKLOG/f5.md`).
+Solapable con inicio de F6 (worker-ollama). Prioridad: visibilidad de jobs sin `psql`.
 
-**F4 cerrada.** Ver `docs/RETROSPECTIVES/f4.md` para lecciones y riesgos que pasan a F4.5.
+**F4.5 cerrada.** Ver `docs/RETROSPECTIVES/f4.5.md` para lecciones y riesgos que pasan a F5/F6.
+
+> ⁴ F4.5 completa (T4.5.1–T4.5.10) y corrida de producción ejecutada el 2026-06-16 (`docs/RUNBOOKS/e2e-f4.5-results.md`): **5/5 escenarios PASS**. Video Crack transcribe vía plataforma con SSRF estricto. Corpus de 5 videos (2.2 min–4.2 h) con similitud 90.5–97.3% (PARIDAD_ACEPTABLE). Caos recovery: 54s requeue, <10s a running. VRAM pico 5060 MiB (margen 440 MiB sobre threshold de 5500). Flag de Video Crack en `both` (sistema viejo activo como respaldo — se apaga en F7).
