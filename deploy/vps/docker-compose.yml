@@ -34,5 +34,17 @@ services:
       postgres:
         condition: service_healthy
 
+  dashboard:
+    build:
+      context: ../../dashboard
+      args:
+        VITE_API_URL: ${VITE_API_URL}
+    restart: unless-stopped
+    ports:
+      # Tailscale IP only — operator accesses via Tailscale, not exposed to internet (R2)
+      - "100.106.192.45:3000:80"
+    depends_on:
+      - api
+
 volumes:
   postgres_data:

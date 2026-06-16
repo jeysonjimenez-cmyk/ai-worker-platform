@@ -19,6 +19,7 @@ import (
 	tcpg "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 
+	adminh "github.com/jeysonjimenez-cmyk/ai-worker-platform/internal/admin"
 	"github.com/jeysonjimenez-cmyk/ai-worker-platform/internal/auth"
 	"github.com/jeysonjimenez-cmyk/ai-worker-platform/internal/jobs"
 	"github.com/jeysonjimenez-cmyk/ai-worker-platform/internal/retention"
@@ -196,6 +197,7 @@ func buildServer(t *testing.T, pool *pgxpool.Pool, fileServerURL string) *httpte
 	dispatcher := webhook.New()
 	jobsHandler := jobs.NewHandler(pool, dispatcher, fileServerURL)
 	workersHandler := workersh.NewHandler(pool, 0, 0) // no vram margin for tests
+	adminHandler := adminh.NewHandler(pool)
 
 	mux := http.NewServeMux()
 	appMW := func(h http.HandlerFunc) http.Handler { return auth.RequireApp(pool, h) }
@@ -206,6 +208,11 @@ func buildServer(t *testing.T, pool *pgxpool.Pool, fileServerURL string) *httpte
 	mux.Handle("GET /ai/jobs/{id}", appMW(jobsHandler.GetByID))
 	mux.Handle("GET /ai/jobs/{id}/files/{filename}", appMW(jobsHandler.GetFile))
 	mux.Handle("POST /ai/jobs/{id}/cancel", appMW(jobsHandler.Cancel))
+	mux.Handle("GET /admin/workers", adminMW(adminHandler.ListWorkers))
+	mux.Handle("GET /admin/jobs", adminMW(adminHandler.ListJobs))
+	mux.Handle("GET /admin/jobs/{id}", adminMW(adminHandler.GetJobDetail))
+	mux.Handle("POST /admin/jobs/{id}/cancel", adminMW(adminHandler.CancelJob))
+	mux.Handle("POST /admin/jobs/{id}/retry", adminMW(adminHandler.RetryJob))
 	mux.Handle("POST /workers/register", adminMW(workersHandler.Register))
 	mux.Handle("POST /workers/{id}/heartbeat", workerMW(workersHandler.Heartbeat))
 	mux.Handle("POST /workers/{id}/claim", workerMW(workersHandler.Claim))
@@ -216,7 +223,25 @@ func buildServer(t *testing.T, pool *pgxpool.Pool, fileServerURL string) *httpte
 	mux.Handle("POST /ai/jobs/{id}/logs", workerMW(jobsHandler.IngestLogs))
 	mux.Handle("POST /ai/jobs/{id}/files", workerMW(jobsHandler.RegisterFile))
 
-	return httptest.NewServer(mux)
+	return httptest.NewServer(withAdminCORS(mux))
+}
+
+// withAdminCORS mirrors main.go's middleware of the same name (package main isn't importable
+// from this external test package); kept in sync manually, same convention as buildServer
+// duplicating main.go's route table for testing.
+func withAdminCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/admin/") {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "X-Admin-Key, Content-Type")
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func post(t *testing.T, srv *httptest.Server, path, keyHeader, key string, body any) *http.Response {
@@ -2043,4 +2068,334 @@ func TestVRAMLedgerPiso_MarginRespected(t *testing.T) {
 		t.Errorf("expected 204 (margin prevents over-reservation), got %d", claimResp2.StatusCode)
 	}
 	claimResp2.Body.Close()
+}
+
+// ─── T5.3: admin endpoints integration tests ───
+
+func TestAdmin_Auth_MissingKey(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	srv := buildServer(t, pool, "")
+	defer srv.Close()
+
+	for _, path := range []string{"/admin/workers", "/admin/jobs", "/admin/jobs/any-id"} {
+		req, _ := http.NewRequest("GET", srv.URL+path, nil)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("GET %s: %v", path, err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("GET %s without key: expected 401, got %d", path, resp.StatusCode)
+		}
+	}
+}
+
+func TestAdmin_CORS_PreflightAndHeaders(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	srv := buildServer(t, pool, "")
+	defer srv.Close()
+
+	// OPTIONS preflight on an admin route must succeed without auth and carry CORS headers
+	// (the browser sends it before attaching X-Admin-Key).
+	req, _ := http.NewRequest("OPTIONS", srv.URL+"/admin/jobs", nil)
+	req.Header.Set("Origin", "http://100.106.192.45:3000")
+	req.Header.Set("Access-Control-Request-Method", "GET")
+	req.Header.Set("Access-Control-Request-Headers", "X-Admin-Key")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("OPTIONS /admin/jobs: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Errorf("preflight: expected 204, got %d", resp.StatusCode)
+	}
+	if got := resp.Header.Get("Access-Control-Allow-Origin"); got != "*" {
+		t.Errorf("Access-Control-Allow-Origin: expected '*', got %q", got)
+	}
+	if got := resp.Header.Get("Access-Control-Allow-Headers"); got != "X-Admin-Key, Content-Type" {
+		t.Errorf("Access-Control-Allow-Headers: got %q", got)
+	}
+
+	// The actual (authenticated) request must also carry the CORS header so the browser
+	// allows the page to read the response.
+	resp2 := get(t, srv, "/admin/jobs", "X-Admin-Key", adminKey)
+	defer resp2.Body.Close()
+	if got := resp2.Header.Get("Access-Control-Allow-Origin"); got != "*" {
+		t.Errorf("GET /admin/jobs: Access-Control-Allow-Origin: expected '*', got %q", got)
+	}
+
+	// Non-admin routes are untouched — no CORS headers leak onto worker/app endpoints.
+	resp3, err := http.Get(srv.URL + "/ai/jobs/any-id")
+	if err != nil {
+		t.Fatalf("GET /ai/jobs/any-id: %v", err)
+	}
+	defer resp3.Body.Close()
+	if got := resp3.Header.Get("Access-Control-Allow-Origin"); got != "" {
+		t.Errorf("GET /ai/jobs/any-id: expected no CORS header, got %q", got)
+	}
+}
+
+func TestAdmin_ListWorkers(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	srv := buildServer(t, pool, "")
+	defer srv.Close()
+
+	// Register two workers.
+	registerWorker(t, srv, "w-admin-1", "wk-adm1", map[string]any{"services": []string{"llm_chat"}, "cuda": false, "vram_total_mb": 0})
+	registerWorker(t, srv, "w-admin-2", "wk-adm2", map[string]any{"services": []string{"tts"}, "cuda": false, "vram_total_mb": 0})
+
+	resp := get(t, srv, "/admin/workers", "X-Admin-Key", adminKey)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	var ws []map[string]any
+	json.NewDecoder(resp.Body).Decode(&ws)
+	resp.Body.Close()
+
+	if len(ws) < 2 {
+		t.Fatalf("expected at least 2 workers, got %d", len(ws))
+	}
+	// Verify required fields are present.
+	for _, w := range ws {
+		if w["id"] == nil || w["status"] == nil || w["hostname"] == nil {
+			t.Errorf("worker missing required fields: %v", w)
+		}
+	}
+}
+
+func TestAdmin_ListJobs_FilterByStatus(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	srv := buildServer(t, pool, "")
+	defer srv.Close()
+
+	ctx := context.Background()
+
+	// Seed jobs in different states.
+	j1, _ := jobs.Create(ctx, pool, jobs.CreateParams{App: "app", Service: "llm_chat", Priority: 5, MaxRetries: 0})
+	j2, _ := jobs.Create(ctx, pool, jobs.CreateParams{App: "app", Service: "tts", Priority: 5, MaxRetries: 0})
+	jobs.Create(ctx, pool, jobs.CreateParams{App: "app", Service: "embeddings", Priority: 5, MaxRetries: 0})
+
+	pool.Exec(ctx, `UPDATE jobs SET status = 'error', completed_at = now() WHERE id = $1`, j1.ID)
+	pool.Exec(ctx, `UPDATE jobs SET status = 'done', completed_at = now() WHERE id = $1`, j2.ID)
+
+	// Filter by error — should return only j1.
+	resp := get(t, srv, "/admin/jobs?status=error", "X-Admin-Key", adminKey)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	var errJobs []map[string]any
+	json.NewDecoder(resp.Body).Decode(&errJobs)
+	resp.Body.Close()
+
+	if len(errJobs) != 1 || errJobs[0]["id"] != j1.ID {
+		t.Errorf("expected 1 error job (id=%s), got %v", j1.ID, errJobs)
+	}
+
+	// No filter — should return all 3.
+	resp2 := get(t, srv, "/admin/jobs", "X-Admin-Key", adminKey)
+	if resp2.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp2.StatusCode)
+	}
+	var allJobs []map[string]any
+	json.NewDecoder(resp2.Body).Decode(&allJobs)
+	resp2.Body.Close()
+
+	if len(allJobs) != 3 {
+		t.Errorf("expected 3 jobs, got %d", len(allJobs))
+	}
+}
+
+func TestAdmin_GetJobDetail_NoVRAMReleased(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	srv := buildServer(t, pool, "")
+	defer srv.Close()
+
+	ctx := context.Background()
+	j, _ := jobs.Create(ctx, pool, jobs.CreateParams{App: "app", Service: "llm_chat", Priority: 5, MaxRetries: 0})
+	pool.Exec(ctx, `UPDATE jobs SET status = 'error', error_msg = 'something failed',
+		completed_at = now(), vram_released = true WHERE id = $1`, j.ID)
+
+	resp := get(t, srv, "/admin/jobs/"+j.ID, "X-Admin-Key", adminKey)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var body map[string]any
+	rawBytes, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	json.Unmarshal(rawBytes, &body)
+
+	// vram_released must not appear in the response (R1).
+	if _, ok := body["vram_released"]; ok {
+		t.Error("vram_released must not be exposed in admin job detail (R1)")
+	}
+	// Required fields must be present.
+	if body["id"] != j.ID {
+		t.Errorf("expected id=%s, got %v", j.ID, body["id"])
+	}
+	if body["error_msg"] == nil {
+		t.Error("error_msg must be present")
+	}
+	if body["payload"] == nil && body["service"] == nil {
+		t.Error("job detail missing expected fields")
+	}
+}
+
+func TestAdmin_GetJobDetail_NotFound(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	srv := buildServer(t, pool, "")
+	defer srv.Close()
+
+	resp := get(t, srv, "/admin/jobs/nonexistent-id", "X-Admin-Key", adminKey)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+}
+
+func TestAdmin_CancelJob_Pending(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	srv := buildServer(t, pool, "")
+	defer srv.Close()
+
+	ctx := context.Background()
+	j, _ := jobs.Create(ctx, pool, jobs.CreateParams{App: "app", Service: "llm_chat", Priority: 5, MaxRetries: 0})
+
+	resp := post(t, srv, "/admin/jobs/"+j.ID+"/cancel", "X-Admin-Key", adminKey, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("cancel pending: expected 200, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	var status string
+	pool.QueryRow(ctx, `SELECT status FROM jobs WHERE id = $1`, j.ID).Scan(&status)
+	if status != "cancelled" {
+		t.Errorf("expected cancelled, got %s", status)
+	}
+}
+
+func TestAdmin_CancelJob_AlreadyTerminal(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	srv := buildServer(t, pool, "")
+	defer srv.Close()
+
+	ctx := context.Background()
+	j, _ := jobs.Create(ctx, pool, jobs.CreateParams{App: "app", Service: "llm_chat", Priority: 5, MaxRetries: 0})
+	pool.Exec(ctx, `UPDATE jobs SET status = 'done', completed_at = now() WHERE id = $1`, j.ID)
+
+	resp := post(t, srv, "/admin/jobs/"+j.ID+"/cancel", "X-Admin-Key", adminKey, nil)
+	if resp.StatusCode != http.StatusConflict {
+		t.Errorf("cancel done job: expected 409, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+}
+
+func TestAdmin_RetryJob_ErrorToPending(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	srv := buildServer(t, pool, "")
+	defer srv.Close()
+
+	ctx := context.Background()
+	j, _ := jobs.Create(ctx, pool, jobs.CreateParams{App: "app", Service: "llm_chat", Priority: 5, MaxRetries: 0})
+	pool.Exec(ctx, `UPDATE jobs SET status = 'error', error_msg = 'failed', retry_count = 3,
+		completed_at = now() WHERE id = $1`, j.ID)
+
+	resp := post(t, srv, "/admin/jobs/"+j.ID+"/retry", "X-Admin-Key", adminKey, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("retry error job: expected 200, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	var status string
+	var retryCount int
+	var errMsg *string
+	pool.QueryRow(ctx, `SELECT status, retry_count, error_msg FROM jobs WHERE id = $1`, j.ID).
+		Scan(&status, &retryCount, &errMsg)
+
+	if status != "pending" {
+		t.Errorf("expected pending after retry, got %s", status)
+	}
+	if retryCount != 0 {
+		t.Errorf("expected retry_count=0 after manual retry, got %d", retryCount)
+	}
+	if errMsg != nil {
+		t.Errorf("expected error_msg=nil after manual retry, got %v", errMsg)
+	}
+}
+
+func TestAdmin_RetryJob_NotError(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	srv := buildServer(t, pool, "")
+	defer srv.Close()
+
+	ctx := context.Background()
+
+	// running job — retry must be rejected.
+	pool.Exec(ctx, `INSERT INTO workers (id, hostname, status, capabilities, api_key)
+		VALUES ('w-retry', 'h', 'online', '{"services":["llm_chat"]}', 'wk-retry')`)
+	j, _ := jobs.Create(ctx, pool, jobs.CreateParams{App: "app", Service: "llm_chat", Priority: 5, MaxRetries: 0})
+	pool.Exec(ctx, `UPDATE jobs SET status = 'running', worker_id = 'w-retry', started_at = now() WHERE id = $1`, j.ID)
+
+	resp := post(t, srv, "/admin/jobs/"+j.ID+"/retry", "X-Admin-Key", adminKey, nil)
+	if resp.StatusCode != http.StatusConflict {
+		t.Errorf("retry running job: expected 409, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	// done job — also rejected.
+	j2, _ := jobs.Create(ctx, pool, jobs.CreateParams{App: "app", Service: "llm_chat", Priority: 5, MaxRetries: 0})
+	pool.Exec(ctx, `UPDATE jobs SET status = 'done', completed_at = now() WHERE id = $1`, j2.ID)
+
+	resp2 := post(t, srv, "/admin/jobs/"+j2.ID+"/retry", "X-Admin-Key", adminKey, nil)
+	if resp2.StatusCode != http.StatusConflict {
+		t.Errorf("retry done job: expected 409, got %d", resp2.StatusCode)
+	}
+	resp2.Body.Close()
+}
+
+func TestAdmin_RetryJob_BecomesClaimable(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	srv := buildServer(t, pool, "")
+	defer srv.Close()
+
+	ctx := context.Background()
+
+	// Register a worker capable of handling the job.
+	registerWorker(t, srv, "w-claim-retry", "wk-clm-retry",
+		map[string]any{"services": []string{"llm_chat"}, "cuda": false, "vram_total_mb": 0})
+
+	// Create a job, put it in error.
+	j, _ := jobs.Create(ctx, pool, jobs.CreateParams{
+		App: "app", Service: "llm_chat", Priority: 5, MaxRetries: 0,
+	})
+	pool.Exec(ctx, `UPDATE jobs SET status = 'error', error_msg = 'failed',
+		completed_at = now(), vram_released = true WHERE id = $1`, j.ID)
+
+	// Retry it.
+	retryResp := post(t, srv, "/admin/jobs/"+j.ID+"/retry", "X-Admin-Key", adminKey, nil)
+	if retryResp.StatusCode != http.StatusOK {
+		t.Fatalf("retry: expected 200, got %d", retryResp.StatusCode)
+	}
+	retryResp.Body.Close()
+
+	// The worker should now be able to claim it.
+	claimResp := post(t, srv, "/workers/w-claim-retry/claim", "X-Worker-Key", "wk-clm-retry", nil)
+	if claimResp.StatusCode != http.StatusOK {
+		t.Errorf("claim after retry: expected 200, got %d", claimResp.StatusCode)
+	}
+	claimed := decodeJob(t, claimResp)
+	if claimed["id"] != j.ID {
+		t.Errorf("worker claimed wrong job: got %v", claimed["id"])
+	}
 }

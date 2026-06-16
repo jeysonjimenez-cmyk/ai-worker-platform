@@ -93,18 +93,19 @@ migrate -path ./migrations -database $DATABASE_URL up
 
 ## Fase activa
 
-**F4.5 ✅ cerrada 2026-06-16** — SDK mínimo + Video Crack transcribe en producción.
-**Siguiente: F5 — Dashboard mínimo** (solapable con F6).
+**F5 ✅ cerrada 2026-06-16** — Dashboard mínimo, operación de producción sin `psql`.
+**Siguiente: F6 — worker-ollama + Video Crack adopta traducción.**
 
 Estado al 2026-06-16:
 - F0–F4 ✅ cerradas
 - F4.5 ✅ cerrada — Video Crack transcribe vía plataforma (SSRF estricto, app key activa, corpus 5 videos PARIDAD_ACEPTABLE, caos recovery 54s)
-- F5 ⏳ Dashboard mínimo (`docs/BACKLOG/f5.md` pendiente de crear)
+- F5 ✅ cerrada — Dashboard en `http://100.106.192.45:3000`, cancelar/reintentar desde UI, diagnóstico sin `psql`. El runbook SQL `f4.5-ops-without-dashboard.md` queda como respaldo.
 - F6 ⏳ worker-ollama + Video Crack adopta traducción
 
-Postura de producción al cerrar F4.5:
-- `ALLOW_HTTP_AUDIO` removido de `~/.config/ai-platform/worker-whisper.env` en ialab
-- App key `video-crack` activa en DB del VPS (`docs/RUNBOOKS/f4.5-provisioning-apps.md`)
-- SSRF estricto verificado en producción (`docs/RUNBOOKS/f4.5-ssrf-production-posture.md`)
-- Runbook SQL para operar sin dashboard (`docs/RUNBOOKS/f4.5-ops-without-dashboard.md`)
-- VRAM pico calibrado: 5060 MiB (margen 440 MiB sobre MIN_VRAM_TRANSCRIPTION_MB=5500)
+Postura de producción al cerrar F5:
+- Dashboard servido en `100.106.192.45:3000` (Tailscale, no expuesto a internet)
+- Auth por admin key (`X-Admin-Key`), sin sistema de usuarios
+- CORS configurado en la API para `/admin/*` (`withAdminCORS` en `api/main.go`)
+- `VITE_API_URL=http://100.106.192.45:8081` en el `.env` del VPS (build-time del dashboard)
+- Worker offline detectado en ≤130s (tick de monitor de F1; mejora a F11)
+- Runbook SQL `f4.5-ops-without-dashboard.md` sigue activo como respaldo

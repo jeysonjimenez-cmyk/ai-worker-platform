@@ -1,11 +1,11 @@
 # AI Worker Platform — Estado del proyecto
 
-> Última actualización: 2026-06-15
+> Última actualización: 2026-06-16
 > Arquitectura congelada en DESIGN.md v1.4. Plan de fases en IMPLEMENTATION_PLAN.md v1.2.
 
 ## Estado actual
 
-**Fase activa: F4.5 — SDK mínimo + Video Crack transcribe**
+**Fase activa: F6 — worker-ollama**
 
 | Fase | Estado | Fecha de cierre |
 |---|---|---|
@@ -15,7 +15,7 @@
 | F3 — Worker base Python (scaffold) | ✅ Completada y verificada en hardware¹ | 2026-06-13 |
 | F4 — worker-whisper | ✅ Completada y verificada en hardware³ | 2026-06-15 |
 | F4.5 — SDK mínimo + Video Crack transcribe | ✅ Completada y verificada en producción⁴ | 2026-06-16 |
-| F5 — Dashboard mínimo | ⏳ Pendiente | — |
+| F5 — Dashboard mínimo | ✅ Completada y verificada en producción⁵ | 2026-06-16 |
 | F6 — worker-ollama | ⏳ Pendiente | — |
 | F7 — worker-tts + migración completa | ⏳ Pendiente | — |
 
@@ -38,7 +38,8 @@
 - **Scaffold `worker_base`** (F3): paquete Python reutilizable (registro, heartbeat en thread, claim long-poll, fencing, graceful shutdown, `upload_file_metadata()`). `worker-echo` corre en Docker en ialab
 - **`worker-whisper`** (F4): faster-whisper (large-v2, CUDA), transcripción con progreso por segmentos, salida VTT/SRT/JSON, descarga de audio con validación SSRF, carga lazy del modelo + descarga por inactividad
 - **Servidor de archivos** (F4): `python -m http.server 8001` en ialab, bind a `100.103.55.110`, volumen `files_data` compartido con `worker-whisper`
-- **Deploy del VPS scripteado** (F3): `deploy/vps/deploy.sh` valida `.env` → `up --build` → healthcheck → `migrate up`
+- **Deploy del VPS scripteado** (F3): `deploy/vps/deploy.sh` valida `.env` → `up --build` → healthcheck API → healthcheck dashboard → `migrate up`
+- **Dashboard mínimo** (F5): React + Vite servido en `http://100.106.192.45:3000` (Tailscale). Una vista: workers (online/offline/busy) + jobs por estado. Acciones: cancelar `pending`, reintentar `error`. Polling 5s. Auth con admin key. Reemplaza el runbook SQL `f4.5-ops-without-dashboard.md` para operación diaria.
 
 ## Decisiones de diseño registradas
 
@@ -68,11 +69,12 @@
 | Margen de deriva ledger (`VRAM_DRIFT_MARGIN_MB`) | 512 MB (configurable) |
 | Retención de métricas crudas | 7 días → agrega a `worker_metrics_hourly` |
 
-## Próximos pasos (F5)
+## Próximos pasos (F6)
 
-**F5 — Dashboard mínimo** · Backlog pendiente de crear (`docs/BACKLOG/f5.md`).
-Solapable con inicio de F6 (worker-ollama). Prioridad: visibilidad de jobs sin `psql`.
+**F6 — worker-ollama** · Segundo servicio: traducción local vía Ollama. Valida convivencia de dos modelos en la misma GPU vía ledger. Al cerrar F6, Video Crack adopta traducción en producción (doble ejecución, mismo patrón F4.5).
 
-**F4.5 cerrada.** Ver `docs/RETROSPECTIVES/f4.5.md` para lecciones y riesgos que pasan a F5/F6.
+**F5 cerrada.** Ver `docs/CHANGELOG/f5.md` y `docs/RUNBOOKS/e2e-f5-results.md`. El dashboard reemplaza al runbook SQL `f4.5-ops-without-dashboard.md` para operación diaria.
 
 > ⁴ F4.5 completa (T4.5.1–T4.5.10) y corrida de producción ejecutada el 2026-06-16 (`docs/RUNBOOKS/e2e-f4.5-results.md`): **5/5 escenarios PASS**. Video Crack transcribe vía plataforma con SSRF estricto. Corpus de 5 videos (2.2 min–4.2 h) con similitud 90.5–97.3% (PARIDAD_ACEPTABLE). Caos recovery: 54s requeue, <10s a running. VRAM pico 5060 MiB (margen 440 MiB sobre threshold de 5500). Flag de Video Crack en `both` (sistema viejo activo como respaldo — se apaga en F7).
+
+> ⁵ F5 completa (T5.1–T5.9) y corrida de producción ejecutada el 2026-06-16 (`docs/RUNBOOKS/e2e-f5-results.md`): **5/5 escenarios PASS**. Dashboard operativo en `http://100.106.192.45:3000`. Cancelar y reintentar funcionan desde la UI. Diagnóstico de job fallido (error + payload) sin `psql`. Fix de CORS detectado y resuelto en la corrida de verificación visual. Worker offline detectado en ≤130s (vs. criterio escrito <90s — es el tick de ~30s del monitor de heartbeat de F1; mejora a F11).

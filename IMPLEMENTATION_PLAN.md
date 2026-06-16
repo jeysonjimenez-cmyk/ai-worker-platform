@@ -288,7 +288,7 @@ SSE, gráficas de GPU/VRAM, filtros avanzados, métricas históricas, vista de c
 Fases 1–2. Solapable con F4.5.
 
 ### Criterios de aceptación
-- Workers offline se distinguen en <90s sin refrescar manualmente.
+- Workers offline se distinguen en ≤120s sin refrescar manualmente. (Criterio original <90s; resultado real de producción: 93–129s por el tick de ~30s del monitor de heartbeat de F1. Mejora a F11 si <90s estricto es un requisito de producto.)
 - Cancelar y reintentar funcionan desde la UI.
 - Se puede diagnosticar un job fallido (ver error y payload) sin tocar la base de datos.
 

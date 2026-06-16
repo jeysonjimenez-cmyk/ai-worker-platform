@@ -20,7 +20,7 @@ MIGRATIONS_PATH="$REPO_ROOT/migrations"
 MIGRATE_BIN="${MIGRATE_BIN:-migrate}"
 SKIP_PULL="${1:-}"
 
-REQUIRED_VARS=(POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD ADMIN_API_KEY DATABASE_URL)
+REQUIRED_VARS=(POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD ADMIN_API_KEY DATABASE_URL VITE_API_URL)
 
 # ── 1. validate .env ──────────────────────────────────────────────────────────
 if [[ ! -f "$ENV_FILE" ]]; then
@@ -72,7 +72,22 @@ for i in $(seq 1 30); do
   sleep 1
 done
 
-# ── 5. apply pending migrations ───────────────────────────────────────────────
+# ── 5. wait for dashboard healthcheck ────────────────────────────────────────
+echo "→ waiting for dashboard to be healthy..."
+for i in $(seq 1 30); do
+  if curl -sf http://100.106.192.45:3000 > /dev/null 2>&1; then
+    echo "✓ dashboard is up"
+    break
+  fi
+  if [[ $i -eq 30 ]]; then
+    echo "error: dashboard did not respond at http://100.106.192.45:3000 after 30s" >&2
+    docker compose -f "$COMPOSE_FILE" logs dashboard | tail -20 >&2
+    exit 1
+  fi
+  sleep 1
+done
+
+# ── 6. apply pending migrations ───────────────────────────────────────────────
 echo "→ applying migrations..."
 "$MIGRATE_BIN" -path "$MIGRATIONS_PATH" -database "$DATABASE_URL" up
 echo "✓ migrations applied"
