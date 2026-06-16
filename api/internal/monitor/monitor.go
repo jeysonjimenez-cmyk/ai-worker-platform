@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	heartbeatTimeout = 90 * time.Second
-	tickInterval     = 30 * time.Second
+	heartbeatTimeout = 60 * time.Second
+	tickInterval     = 10 * time.Second
 )
 
 // Run starts the heartbeat monitor loop. It blocks until ctx is cancelled.

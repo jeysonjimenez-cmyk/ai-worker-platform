@@ -107,5 +107,5 @@ Postura de producción al cerrar F5:
 - Auth por admin key (`X-Admin-Key`), sin sistema de usuarios
 - CORS configurado en la API para `/admin/*` (`withAdminCORS` en `api/main.go`)
 - `VITE_API_URL=http://100.106.192.45:8081` en el `.env` del VPS (build-time del dashboard)
-- Worker offline detectado en ≤130s (tick de monitor de F1; mejora a F11)
+- Worker offline detectado en ≤70s (heartbeatTimeout=60s, tickInterval=10s en `monitor.go`)
 - Runbook SQL `f4.5-ops-without-dashboard.md` sigue activo como respaldo
