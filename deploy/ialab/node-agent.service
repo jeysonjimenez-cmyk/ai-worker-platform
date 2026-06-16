@@ -1,0 +1,19 @@
+[Unit]
+Description=AI Worker Platform — Node Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__AGENT_USER__
+WorkingDirectory=/opt/ai-platform/agent
+EnvironmentFile=/etc/ai-platform/agent.env
+ExecStart=/opt/ai-platform/agent/.venv/bin/python -m agent.main
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=node-agent
+
+[Install]
+WantedBy=multi-user.target

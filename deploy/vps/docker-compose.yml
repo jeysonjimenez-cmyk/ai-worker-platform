@@ -25,11 +25,26 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
       ADMIN_API_KEY: ${ADMIN_API_KEY}
       LISTEN_ADDR: ":8080"
+      FILE_SERVER_URL: ${FILE_SERVER_URL}
+      MIN_VRAM_TRANSCRIPTION_MB: ${MIN_VRAM_TRANSCRIPTION_MB}
     ports:
-      - "127.0.0.1:8081:8080"
+      # Tailscale IP — accessible from ialab workers, not exposed to internet
+      - "100.106.192.45:8081:8080"
     depends_on:
       postgres:
         condition: service_healthy
+
+  dashboard:
+    build:
+      context: ../../dashboard
+      args:
+        VITE_API_URL: ${VITE_API_URL}
+    restart: unless-stopped
+    ports:
+      # Tailscale IP only — operator accesses via Tailscale, not exposed to internet (R2)
+      - "100.106.192.45:3000:80"
+    depends_on:
+      - api
 
 volumes:
   postgres_data:

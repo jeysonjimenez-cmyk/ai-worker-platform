@@ -1,0 +1,20 @@
+[project]
+name = "ai-platform-client"
+version = "0.1.0"
+description = "SDK mínimo para AI Worker Platform — create_job, wait, download"
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.28.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "ruff>=0.15.0",
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

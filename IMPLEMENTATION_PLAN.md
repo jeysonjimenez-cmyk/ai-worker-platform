@@ -78,7 +78,7 @@ API Go funcional con el ciclo de vida completo de un job en base de datos, inclu
   - `POST /workers/{id}/claim` — SKIP LOCKED + filtro por capabilities + **reserva atómica de VRAM** en `gpus`
   - `PATCH /ai/jobs/{id}/progress` y `/complete` — **con fencing** (`WHERE worker_id = $reporter`, 409 si no coincide)
   - `POST /ai/jobs/{id}/cancel`
-- Heartbeat monitor (goroutine): timeout 90s → jobs `running` vuelven a `pending`, libera reserva de VRAM, worker → `offline`
+- Heartbeat monitor (goroutine): timeout 60s, tick 10s → jobs `running` vuelven a `pending`, libera reserva de VRAM, worker → `offline`
 - Reintentos con backoff exponencial (30s → 60s → 120s)
 - LISTEN/NOTIFY: `NOTIFY jobs_channel` al crear job; el endpoint de claim soporta long-polling o los workers escuchan vía la API
 - Autenticación: middleware `X-App-Key` / API key de worker / API key de admin
@@ -98,7 +98,7 @@ Fase 0.
 ### Criterios de aceptación
 - Un job creado por API es reclamado por un worker simulado, progresa y termina; el estado es consultable en cada paso.
 - 10 workers simulados compitiendo por jobs que suman más VRAM que la GPU: nunca se sobre-reserva (test automatizado).
-- Un worker simulado que deja de hacer heartbeat pierde su job en ≤90s; si luego reporta `complete`, recibe 409.
+- Un worker simulado que deja de hacer heartbeat pierde su job en ≤70s; si luego reporta `complete`, recibe 409.
 - Un job que falla se reintenta con backoff y termina en `error` tras `max_retries`.
 - Webhook se dispara al completar; un `webhook_url` hacia IP privada es rechazado al crear el job.
 
@@ -173,7 +173,7 @@ Fase 1.
 
 ### Criterios de aceptación
 - `worker-echo` en Docker en ialab procesa jobs creados por API end-to-end a través de Tailscale.
-- Matar el contenedor mid-job → el job vuelve a `pending` en ≤90s y otro worker lo toma.
+- Matar el contenedor mid-job → el job vuelve a `pending` en ≤70s y otro worker lo toma.
 - `docker compose restart` del worker → se re-registra solo.
 - El heartbeat sigue llegando mientras `execute()` está bloqueado (test con sleep largo).
 

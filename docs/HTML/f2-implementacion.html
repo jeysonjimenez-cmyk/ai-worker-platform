@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fase 2 — Node Agent: Qué se implementó</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f1117; color: #e2e8f0; line-height: 1.6; }
+
+    /* HEADER */
+    .header { background: linear-gradient(135deg, #1a1f2e 0%, #0f1117 100%); border-bottom: 1px solid #2d3748; padding: 2.5rem 3rem; }
+    .header h1 { font-size: 1.7rem; font-weight: 800; color: #f7fafc; letter-spacing: -0.02em; }
+    .header .subtitle { font-size: 0.95rem; color: #718096; margin-top: 0.3rem; }
+    .badges { display: flex; gap: 0.5rem; margin-top: 0.9rem; flex-wrap: wrap; }
+    .badge { display: inline-block; padding: 0.2rem 0.7rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
+    .badge-green { background: #1a4731; color: #68d391; border: 1px solid #276749; }
+    .badge-blue { background: #1a2744; color: #63b3ed; border: 1px solid #2b4c8c; }
+    .badge-purple { background: #2d1f4e; color: #b794f4; border: 1px solid #553c9a; }
+    .badge-orange { background: #3d2200; color: #f6ad55; border: 1px solid #7b4d00; }
+
+    /* LAYOUT */
+    .container { max-width: 980px; margin: 0 auto; padding: 2rem 3rem 4rem; }
+
+    /* RESUMEN GRID */
+    .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin: 2rem 0; }
+    .card { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 10px; padding: 1.2rem 1.4rem; }
+    .card .label { font-size: 0.72rem; color: #718096; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.4rem; }
+    .card .value { font-size: 1.6rem; font-weight: 800; color: #68d391; }
+    .card .sub { font-size: 0.78rem; color: #a0aec0; margin-top: 0.15rem; }
+
+    /* ARQUITECTURA */
+    .arch-diagram { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 10px; padding: 1.5rem 2rem; margin: 1.5rem 0; font-family: 'Fira Code', monospace; font-size: 0.82rem; line-height: 1.8; color: #a0aec0; }
+    .arch-diagram .hl { color: #68d391; font-weight: 600; }
+    .arch-diagram .dim { color: #4a5568; }
+
+    /* TASK CARDS */
+    h2 { font-size: 1rem; font-weight: 700; color: #a0aec0; margin: 2.5rem 0 1rem; text-transform: uppercase; letter-spacing: 0.08em; padding-bottom: 0.4rem; border-bottom: 1px solid #2d3748; }
+
+    .task { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 10px; margin-bottom: 1.2rem; overflow: hidden; }
+    .task-header { display: flex; align-items: flex-start; gap: 1rem; padding: 1.1rem 1.4rem; cursor: pointer; }
+    .task-id { font-size: 0.72rem; font-weight: 700; color: #4a5568; font-family: monospace; white-space: nowrap; padding-top: 0.1rem; }
+    .task-meta { flex: 1; }
+    .task-title { font-size: 0.95rem; font-weight: 700; color: #f7fafc; }
+    .task-desc { font-size: 0.82rem; color: #718096; margin-top: 0.2rem; }
+    .task-chips { display: flex; gap: 0.4rem; margin-top: 0.5rem; flex-wrap: wrap; }
+    .chip { font-size: 0.7rem; padding: 0.15rem 0.55rem; border-radius: 4px; font-weight: 500; }
+    .chip-dev { background: #1a2744; color: #63b3ed; }
+    .chip-infra { background: #2d1f4e; color: #b794f4; }
+    .chip-devops { background: #3d2200; color: #f6ad55; }
+    .chip-doc { background: #1a3a2a; color: #68d391; }
+    .task-status { font-size: 0.75rem; color: #68d391; font-weight: 700; white-space: nowrap; padding-top: 0.1rem; }
+
+    .task-body { padding: 0 1.4rem 1.2rem; border-top: 1px solid #1e2535; }
+    .task-body p { font-size: 0.85rem; color: #a0aec0; margin: 1rem 0 0.6rem; }
+    .task-body p strong { color: #e2e8f0; }
+
+    /* SECTIONS WITHIN TASK */
+    .section { margin-bottom: 1rem; }
+    .section-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; color: #4a5568; margin-bottom: 0.5rem; margin-top: 0.8rem; }
+
+    /* FILES */
+    .file-list { list-style: none; }
+    .file-list li { display: flex; align-items: flex-start; gap: 0.6rem; padding: 0.4rem 0; border-bottom: 1px solid #161b27; font-size: 0.82rem; }
+    .file-list li:last-child { border-bottom: none; }
+    .file-name { font-family: monospace; color: #63b3ed; white-space: nowrap; flex-shrink: 0; }
+    .file-desc { color: #a0aec0; }
+    .file-new { font-size: 0.65rem; font-weight: 700; color: #68d391; background: #1a3a2a; border: 1px solid #276749; padding: 0.05rem 0.35rem; border-radius: 3px; margin-left: 0.3rem; flex-shrink: 0; }
+
+    /* TESTS */
+    .test-list { list-style: none; }
+    .test-list li { display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.3rem 0; font-size: 0.82rem; color: #a0aec0; }
+    .test-list li::before { content: '✓'; color: #68d391; font-weight: 700; flex-shrink: 0; margin-top: 0.05rem; }
+
+    /* DECISIONS */
+    .decision { background: #161b27; border-left: 3px solid #4299e1; border-radius: 0 6px 6px 0; padding: 0.65rem 1rem; margin: 0.4rem 0; font-size: 0.82rem; }
+    .decision strong { color: #63b3ed; display: block; margin-bottom: 0.15rem; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.03em; }
+    .decision p { color: #a0aec0; margin: 0; }
+
+    /* DEBT */
+    .debt { background: #2d1800; border-left: 3px solid #f6ad55; border-radius: 0 6px 6px 0; padding: 0.65rem 1rem; margin: 0.4rem 0; font-size: 0.82rem; color: #fbd38d; }
+
+    /* TABLE */
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin: 0.5rem 0; }
+    th { background: #161b27; color: #718096; padding: 0.45rem 0.8rem; text-align: left; font-weight: 600; border-bottom: 1px solid #2d3748; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    td { padding: 0.45rem 0.8rem; border-bottom: 1px solid #161b27; color: #e2e8f0; }
+    tr:last-child td { border-bottom: none; }
+    td code { font-family: monospace; background: #161b27; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.78rem; color: #63b3ed; }
+    .pass { color: #68d391; font-weight: 600; }
+
+    /* MIGRATION BLOCK */
+    .migration { background: #0d1117; border: 1px solid #2d3748; border-radius: 6px; padding: 0.8rem 1rem; font-family: monospace; font-size: 0.78rem; color: #a0aec0; margin: 0.5rem 0; }
+    .migration .kw { color: #b794f4; }
+    .migration .tb { color: #68d391; }
+    .migration .cm { color: #4a5568; }
+
+    /* FOOTER */
+    .footer { text-align: center; padding: 2rem; font-size: 0.75rem; color: #4a5568; border-top: 1px solid #1a1f2e; margin-top: 3rem; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Fase 2 — Node Agent</h1>
+  <div class="subtitle">Implementación completa · AI Worker Platform · feature/f2</div>
+  <div class="badges">
+    <span class="badge badge-green">✅ Completada 2026-06-13</span>
+    <span class="badge badge-blue">13 tareas</span>
+    <span class="badge badge-purple">~32 h estimadas</span>
+    <span class="badge badge-orange">Python + Go + systemd</span>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- RESUMEN NUMÉRICO -->
+  <div class="summary-grid">
+    <div class="card">
+      <div class="label">Archivos creados</div>
+      <div class="value">18</div>
+      <div class="sub">Python, Go, SQL, shell</div>
+    </div>
+    <div class="card">
+      <div class="label">Tests añadidos</div>
+      <div class="value">68+</div>
+      <div class="sub">unitarios + integración</div>
+    </div>
+    <div class="card">
+      <div class="label">Migraciones</div>
+      <div class="value">2</div>
+      <div class="sub">0002 + 0003</div>
+    </div>
+    <div class="card">
+      <div class="label">Escenarios E2E</div>
+      <div class="value">3</div>
+      <div class="sub">reboot · outage · drift</div>
+    </div>
+  </div>
+
+  <!-- ARQUITECTURA -->
+  <h2>Qué hace el sistema después de F2</h2>
+
+  <div class="arch-diagram">
+    <span class="dim">┌─────────────────────────────── ialab ────────────────────────────────┐</span><br>
+    │  <span class="hl">Node Agent</span> (Python, systemd)                                         │<br>
+    │  ├─ colecta GPU/CPU cada 10s vía pynvml + psutil                      │<br>
+    │  ├─ buffer en memoria (max 360 muestras = 1 hora) si el VPS cae       │<br>
+    │  ├─ expone última muestra en <span class="hl">http://100.103.55.110:9100/metrics</span>     │<br>
+    │  └─ se registra al arrancar → crea fila en <span class="hl">gpus</span> con VRAM real        │<br>
+    <span class="dim">└──────────────────────────────────────────────────────────────────────┘</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">│ POST /workers/{id}/metrics  (X-Worker-Key)</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">│ batch de samples con recorded_at del cliente</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">↓ (Tailscale)</span><br>
+    <span class="dim">┌────────────────────────── VPS ───────────────────────────────────────┐</span><br>
+    │  <span class="hl">API Go</span>                                                               │<br>
+    │  ├─ ingiere métricas en <span class="hl">worker_metrics</span> (timestamp de captura)          │<br>
+    │  ├─ detecta deriva ledger ↔ VRAM real → WARN en logs                  │<br>
+    │  └─ compacta filas > 7 días → <span class="hl">worker_metrics_hourly</span> (goroutine 24h)   │<br>
+    │  <span class="hl">PostgreSQL</span>                                                            │<br>
+    │  └─ workers · gpus · worker_metrics · worker_metrics_hourly           │<br>
+    <span class="dim">└──────────────────────────────────────────────────────────────────────┘</span>
+  </div>
+
+  <!-- TAREAS -->
+  <h2>Tareas implementadas</h2>
+
+  <!-- T2.1 -->
+  <div class="task">
+    <div class="task-header">
+      <div class="task-id">T2.1</div>
+      <div class="task-meta">
+        <div class="task-title">gpu_id explícito en el registro de workers</div>
+        <div class="task-desc">El cliente declara su gpu_id en el payload de registro, en lugar de que el servidor lo derive como hostname+"/gpu-0".</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo</span>
+          <span class="chip chip-doc">Retro F1 #5</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-10</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> en F1, el servidor derivaba el gpu_id como <code>hostname+"/gpu-0"</code>. Esto impide que un nodo con varias GPUs registre cada una con su identidad real, y fuerza al servidor a "adivinar" algo que solo el cliente conoce.</p>
+
+      <div class="section-title">Qué se cambió</div>
+      <ul class="file-list">
+        <li><span class="file-name">api/internal/workers/store.go</span><span class="file-desc">— <code>RegisterParams</code> gana <code>GPUID *string</code>. Si el cliente lo envía, se usa ese valor; si no, cae en <code>hostname+"/gpu-0"</code> para compatibilidad con clientes viejos.</span></li>
+        <li><span class="file-name">api/internal/workers/handler.go</span><span class="file-desc">— <code>registerRequest</code> gana <code>gpu_id omitempty</code> y lo pasa al store.</span></li>
+        <li><span class="file-name">api/cmd/worker-sim/main.go</span><span class="file-desc">— El worker simulado de F1 ahora declara <code>"gpu_id": "sim-host/gpu-0"</code> explícitamente.</span></li>
+      </ul>
+
+      <div class="section-title">Tests añadidos</div>
+      <ul class="test-list">
+        <li>Registro con gpu_id explícito → fila en gpus con ese id exacto</li>
+        <li>Re-registro no pisa vram_reserved_mb del ledger</li>
+        <li>Registro sin gpu_id conserva comportamiento anterior (todos los tests de F1 siguen pasando)</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- T2.2 -->
+  <div class="task">
+    <div class="task-header">
+      <div class="task-id">T2.2</div>
+      <div class="task-meta">
+        <div class="task-title">Borrar ClaimResult (código muerto)</div>
+        <div class="task-desc">Eliminación del tipo ClaimResult declarado pero nunca usado en el código.</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Limpieza</span>
+          <span class="chip chip-doc">Retro F1 #4</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-10</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> <code>ClaimResult</code> era un struct en <code>store.go</code> que había quedado sin referencias. Código muerto que confunde a quien lee el archivo.</p>
+
+      <div class="section-title">Qué se cambió</div>
+      <ul class="file-list">
+        <li><span class="file-name">api/internal/workers/store.go</span><span class="file-desc">— Eliminadas 3 líneas del tipo <code>ClaimResult</code>. Nada más. El import <code>jobs</code> en el mismo archivo sigue siendo usado por otras funciones.</span></li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- T2.3 -->
+  <div class="task">
+    <div class="task-header">
+      <div class="task-id">T2.3</div>
+      <div class="task-meta">
+        <div class="task-title">Endpoint de ingesta de métricas en la API Go</div>
+        <div class="task-desc">POST /workers/{id}/metrics — recibe lotes de muestras del agente y las persiste en worker_metrics con el timestamp de captura del cliente.</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo</span>
+          <span class="chip chip-blue">4 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-10</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> la API no tenía ninguna forma de recibir datos de telemetría del hardware. El agente necesitaba un endpoint autenticado que acepte lotes (para el buffer de reconexión) y que preserve el timestamp de captura del cliente, no el de llegada al servidor.</p>
+
+      <div class="section-title">Qué se creó / cambió</div>
+      <ul class="file-list">
+        <li><span class="file-name">api/internal/workers/store.go</span><span class="file-desc">— Struct <code>MetricSample</code> con todos los campos (cpu_pct, vram_total/used/free, gpu_util, temperature, power, ram_used) y función <code>IngestMetrics(ctx, pool, workerID, []MetricSample)</code> que inserta en transacción.</span></li>
+        <li><span class="file-name">api/internal/workers/handler.go</span><span class="file-desc">— <code>metricsRequest</code> (array de samples) + handler <code>IngestMetrics</code> con validación de payload.</span></li>
+        <li><span class="file-name">api/main.go</span><span class="file-desc">— Nueva ruta <code>POST /workers/{id}/metrics</code> bajo el middleware de worker key.</span></li>
+      </ul>
+
+      <div class="section-title">Convenciones clave</div>
+      <div class="decision">
+        <strong>recorded_at viene del cliente</strong>
+        <p>El agente envía el timestamp exacto de cuando tomó la muestra. La API lo persiste tal cual, sin sobreescribirlo con <code>now()</code>. Esto es lo que hace posible que el buffer de reconexión funcione: al reconectar, el lote acumulado llega con los timestamps reales de captura.</p>
+      </div>
+      <div class="decision">
+        <strong>Acepta lotes (array)</strong>
+        <p>El endpoint recibe un array de muestras en lugar de una sola. Esto soporta directamente el caso de buffer: cuando el agente se reconecta, envía todas las muestras acumuladas en un solo POST.</p>
+      </div>
+
+      <div class="section-title">Tests de integración (PostgreSQL real)</div>
+      <ul class="test-list">
+        <li>POST válido inserta todos los campos con el timestamp de captura</li>
+        <li>Lote de N muestras inserta N filas</li>
+        <li>Sin API key o con key de app → 401/403</li>
+        <li>Payload sin recorded_at → 422</li>
+        <li>Worker_id del path ≠ worker autenticado → 403</li>
+        <li>Campos GPU null en nodos sin GPU → aceptado</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- T2.4 -->
+  <div class="task">
+    <div class="task-header">
+      <div class="task-id">T2.4</div>
+      <div class="task-meta">
+        <div class="task-title">Scaffold del Node Agent + lectura de métricas</div>
+        <div class="task-desc">Proyecto Python 3.12 + uv con pynvml y psutil. Lee GPU util, VRAM, temperatura, watts, CPU y RAM.</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo</span>
+          <span class="chip chip-orange">Python nuevo</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-11</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> no existía el paquete <code>agent/</code>. Esta tarea lo crea desde cero: estructura Python, dependencias congeladas, módulo de colección de métricas, configuración por env vars y CI integrada.</p>
+
+      <div class="section-title">Estructura creada</div>
+      <ul class="file-list">
+        <li><span class="file-name">agent/pyproject.toml</span> <span class="file-new">NEW</span><span class="file-desc">— Dependencias: <code>nvidia-ml-py</code> (paquete oficial NVIDIA, mismo namespace <code>import pynvml</code>), <code>psutil</code>, <code>pytest</code>, <code>ruff</code>. Versiones congeladas en uv.lock.</span></li>
+        <li><span class="file-name">agent/agent/config.py</span> <span class="file-new">NEW</span><span class="file-desc">— <code>Config</code> dataclass con <code>load()</code> desde env vars. Falla al arrancar si falta alguna variable requerida.</span></li>
+        <li><span class="file-name">agent/agent/collector.py</span> <span class="file-new">NEW</span><span class="file-desc">— <code>MetricSample</code> dataclass + <code>collect()</code>. Usa <code>_read_gpu()</code> vía pynvml; si la GPU no está disponible, los campos GPU quedan <code>None</code> (soporta nodos sin GPU).</span></li>
+        <li><span class="file-name">agent/tests/test_collector.py</span> <span class="file-new">NEW</span><span class="file-desc">— 10 tests unitarios con pynvml mockeado (no requiere GPU en CI).</span></li>
+        <li><span class="file-name">.github/workflows/ci.yml</span><span class="file-desc">— Nuevo job <code>agent</code>: ruff + pytest. El Makefile incluye <code>agent/</code> en <code>make test</code> y <code>make lint</code>.</span></li>
+      </ul>
+
+      <div class="section-title">Decisión de dependencia</div>
+      <div class="decision">
+        <strong>nvidia-ml-py, no pynvml</strong>
+        <p><code>pynvml</code> en PyPI está deprecado. <code>nvidia-ml-py</code> es el paquete oficial mantenido por NVIDIA, pero expone exactamente el mismo namespace <code>import pynvml</code>. El código es idéntico; solo cambia la entrada en <code>pyproject.toml</code>.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T2.5 -->
+  <div class="task">
+    <div class="task-header">
+      <div class="task-id">T2.5</div>
+      <div class="task-meta">
+        <div class="task-title">Endpoint local /metrics del agente</div>
+        <div class="task-desc">Servidor HTTP mínimo que expone la última muestra en JSON. Bind explícito a la IP Tailscale, nunca a 0.0.0.0.</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-11</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> los workers de F3 correrán en Docker en ialab. Desde un contenedor, <code>127.0.0.1</code> no es el host — no podrían consultar el estado del nodo. La solución es un servidor HTTP en la IP Tailscale del nodo, accesible desde cualquier contenedor y desde el VPS.</p>
+
+      <div class="section-title">Qué se creó</div>
+      <ul class="file-list">
+        <li><span class="file-name">agent/agent/metrics_server.py</span> <span class="file-new">NEW</span><span class="file-desc">— <code>MetricsServer</code> con <code>update(sample)</code> thread-safe (lock interno) y <code>start(bind_addr)</code> que lanza el servidor en un daemon thread. Responde 503 antes del primer sample, 404 en rutas desconocidas.</span></li>
+        <li><span class="file-name">agent/agent/config.py</span><span class="file-desc">— Añadido <code>metrics_bind: str</code> desde <code>AGENT_METRICS_BIND</code>. <strong>No tiene valor por defecto</strong>: si la variable no está configurada, el agente falla al arrancar con error claro. Nunca silencia a <code>0.0.0.0</code>.</span></li>
+        <li><span class="file-name">agent/tests/test_metrics_server.py</span> <span class="file-new">NEW</span><span class="file-desc">— 7 tests con servidor real en puertos efímeros (sin necesidad de root ni GPU).</span></li>
+      </ul>
+
+      <div class="section-title">Decisión de seguridad</div>
+      <div class="decision">
+        <strong>AGENT_METRICS_BIND es obligatoria, sin default</strong>
+        <p>El operador debe declarar explícitamente en qué dirección escucha el agente. Un default silencioso a <code>0.0.0.0</code> expondría el endpoint a cualquier interfaz de red, incluyendo las públicas. El valor operativo es siempre la IP Tailscale del nodo (<code>100.103.55.110:9100</code>).</p>
+      </div>
+
+      <div class="section-title">Verificado en hardware real (2026-06-13)</div>
+      <ul class="test-list">
+        <li><code>ss -tlnp</code> muestra bind solo en <code>100.103.55.110:9100</code>, no en <code>0.0.0.0</code></li>
+        <li><code>curl http://100.103.55.110:9100/metrics</code> desde el VPS vía Tailscale devuelve JSON correcto</li>
+        <li>No alcanzable desde internet público</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- T2.6 -->
+  <div class="task">
+    <div class="task-header">
+      <div class="task-id">T2.6</div>
+      <div class="task-meta">
+        <div class="task-title">Registro del nodo y de la(s) GPU(s) al arrancar</div>
+        <div class="task-desc">Al iniciar, el agente enumera GPUs vía pynvml y registra el nodo y cada GPU en la API con su VRAM real.</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-11</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> antes de F2, la tabla <code>gpus</code> se poblaba manualmente o con datos hardcodeados. Ahora el agente mide la VRAM real con pynvml y registra la GPU automáticamente al arrancar.</p>
+
+      <div class="section-title">Qué se creó</div>
+      <ul class="file-list">
+        <li><span class="file-name">agent/agent/registration.py</span> <span class="file-new">NEW</span><span class="file-desc">— <code>_enumerate_gpus()</code> usa pynvml para listar GPUs y medir VRAM total. <code>register()</code> llama <code>POST /workers/register</code> con <code>X-Admin-Key</code>, incluyendo <code>gpu_id</code> explícito y <code>vram_total_mb</code> real. El endpoint de la API es idempotente (upsert): re-arrancar no duplica filas ni pisa <code>vram_reserved_mb</code>.</span></li>
+        <li><span class="file-name">agent/tests/test_registration.py</span> <span class="file-new">NEW</span><span class="file-desc">— 9 tests: enumeración con/sin GPU, payload correcto, gpu_id explícito, header admin key, idempotencia.</span></li>
+      </ul>
+
+      <div class="section-title">Verificado en hardware real (2026-06-13)</div>
+      <ul class="test-list">
+        <li>Tabla <code>gpus</code>: <code>id=ialab/gpu-0</code>, <code>hostname=ialab</code>, <code>vram_total_mb=16376</code></li>
+        <li>Re-arranque del agente → misma fila actualizada, <code>vram_reserved_mb</code> intacto</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- T2.7 -->
+  <div class="task">
+    <div class="task-header">
+      <div class="task-id">T2.7</div>
+      <div class="task-meta">
+        <div class="task-title">Loop de reporte cada 10s con buffer y reintentos</div>
+        <div class="task-desc">Loop principal que toma una muestra cada 10s. Si el VPS no responde, acumula en buffer y reenvía en lote al reconectar.</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo</span>
+          <span class="chip chip-orange">4 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-11</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> si el VPS cae, el agente no debe crashear ni perder muestras. Al reconectar, el VPS debe recibir todas las muestras con sus timestamps de captura originales, no con el momento de llegada.</p>
+
+      <div class="section-title">Qué se creó</div>
+      <ul class="file-list">
+        <li><span class="file-name">agent/agent/reporter.py</span> <span class="file-new">NEW</span><span class="file-desc">— <code>Reporter</code> con buffer <code>deque(maxlen=360)</code> (drop-oldest automático = 1 hora a 10s/muestra). <code>flush()</code> envía el lote acumulado. Backoff exponencial: 5s → 10s → 20s → 40s → 80s → 160s → 300s (máximo). Se resetea a cero tras flush exitoso.</span></li>
+        <li><span class="file-name">agent/agent/main.py</span> <span class="file-new">NEW</span><span class="file-desc">— Entry point: Config → registro → MetricsServer → Reporter → loop. No se testea directamente (es el pegamento de módulos ya testeados).</span></li>
+        <li><span class="file-name">agent/tests/test_reporter.py</span> <span class="file-new">NEW</span><span class="file-desc">— 21 tests: buffer cap, flush success/failure, backoff, run_loop con collect_fn inyectado para testear sin GPU ni red.</span></li>
+      </ul>
+
+      <div class="section-title">Decisiones de diseño</div>
+      <div class="decision">
+        <strong>deque(maxlen=N) para el buffer</strong>
+        <p>Python's <code>collections.deque</code> con <code>maxlen</code> descarta las muestras más antiguas automáticamente cuando se llena. No requiere código extra de gestión de límite.</p>
+      </div>
+      <div class="decision">
+        <strong>collect_fn inyectable en run_loop</strong>
+        <p>El loop acepta una función de colección como parámetro. En producción es <code>collect()</code>; en tests es una función que devuelve datos simulados. Permite probar el comportamiento del loop (buffer, backoff, reintentos) sin GPU ni servidor real.</p>
+      </div>
+
+      <div class="section-title">Verificado en hardware real (2026-06-13)</div>
+      <ul class="test-list">
+        <li>VPS caído 7 min → agente vivo, backoff hasta 300s, sin reinicios de systemd</li>
+        <li>Al reconectar: lote de ~42 muestras enviado, gap de 7 min visible en worker_metrics</li>
+        <li>recorded_at del lote = timestamps de captura reales, no momento de llegada</li>
+        <li>Cadencia volvió a 10s tras el lote</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- T2.8 -->
+  <div class="task">
+    <div class="task-header">
+      <div class="task-id">T2.8</div>
+      <div class="task-meta">
+        <div class="task-title">Unidad systemd con restart automático</div>
+        <div class="task-desc">Servicio node-agent.service con Restart=always, arranque tras red, env desde archivo externo.</div>
+        <div class="task-chips">
+          <span class="chip chip-infra">Infraestructura</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-11</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> el agente debe sobrevivir a reinicios del nodo y a crashes del proceso sin intervención manual.</p>
+
+      <div class="section-title">Qué se creó</div>
+      <ul class="file-list">
+        <li><span class="file-name">deploy/ialab/node-agent.service</span> <span class="file-new">NEW</span><span class="file-desc">— Unit file con <code>Restart=always</code>, <code>After=network-online.target</code> (espera a que Tailscale esté activo antes de arrancar), <code>EnvironmentFile=/etc/ai-platform/agent.env</code> (credenciales fuera del unit), <code>SyslogIdentifier=node-agent</code> para journald. El usuario del servicio se sustituye por el instalador (<code>__AGENT_USER__</code>).</span></li>
+        <li><span class="file-name">agent/tests/test_deploy_artifacts.py</span> <span class="file-new">NEW</span><span class="file-desc">— 20 tests que validan los artefactos estáticos: que el unit file tiene las directivas de seguridad, que el script de instalación hace chmod 600, que el EnvironmentFile no está en el unit, etc.</span></li>
+      </ul>
+
+      <div class="section-title">Verificado en hardware real (2026-06-13)</div>
+      <ul class="test-list">
+        <li><code>kill -9</code> al proceso → systemd lo reinicia en ~5 segundos</li>
+        <li>Reboot completo de ialab → agente vuelve solo, primera métrica en ~2 min</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- T2.9 -->
+  <div class="task">
+    <div class="task-header">
+      <div class="task-id">T2.9</div>
+      <div class="task-meta">
+        <div class="task-title">Deploy en ialab + validación contra nvidia-smi</div>
+        <div class="task-desc">Script de instalación idempotente y documentación del procedimiento de despliegue.</div>
+        <div class="task-chips">
+          <span class="chip chip-devops">DevOps</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-11</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> el deploy del agente debe ser reproducible desde cero. Re-ejecutarlo debe ser seguro (idempotente) sin pisar credenciales existentes.</p>
+
+      <div class="section-title">Qué se creó</div>
+      <ul class="file-list">
+        <li><span class="file-name">deploy/ialab/install-agent.sh</span> <span class="file-new">NEW</span><span class="file-desc">— Copia el código del agente a <code>/opt/ai-platform/agent</code>, ejecuta <code>uv sync --frozen</code>, crea <code>/etc/ai-platform/agent.env</code> desde el template solo si no existe (preserva credenciales reales en re-ejecuciones), instala el unit file sustituyendo <code>__AGENT_USER__</code>, habilita e inicia el servicio.</span></li>
+        <li><span class="file-name">deploy/ialab/agent.env.example</span> <span class="file-new">NEW</span><span class="file-desc">— Plantilla con las 5 variables requeridas, comentadas con los valores reales de homelab.</span></li>
+        <li><span class="file-name">docs/IALAB.md</span><span class="file-desc">— Sección "Instalación del Node Agent" con el procedimiento completo.</span></li>
+      </ul>
+
+      <div class="section-title">Verificado en hardware real (2026-06-13)</div>
+      <ul class="test-list">
+        <li>nvidia-smi: vram_free=14634 MB · Agente reportó: vram_free=14633 MB → delta 1 MB ✅</li>
+        <li>worker_metrics recibe una fila cada ~10s con valores plausibles</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- T2.10 -->
+  <div class="task">
+    <div class="task-header">
+      <div class="task-id">T2.10</div>
+      <div class="task-meta">
+        <div class="task-title">Alerta de deriva ledger ↔ VRAM real</div>
+        <div class="task-desc">La API compara la VRAM libre reportada contra lo que el ledger predice. Si la diferencia supera 512 MB, emite un WARN en logs.</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo</span>
+          <span class="chip chip-orange">Observabilidad</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-11</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> el ledger de VRAM (vram_total - vram_reserved) puede desviarse de la realidad si hay bugs en la lógica de claim/release. Sin datos reales del hardware, estos bugs son invisibles. La alerta hace que cualquier deriva sostenida aparezca en logs desde el primer día con métricas reales.</p>
+
+      <div class="section-title">Cómo funciona</div>
+      <p>Al ingerir métricas, la API toma el sample más reciente con <code>vram_free_mb</code> no nulo y lo compara contra <code>gpus.vram_total_mb - gpus.vram_reserved_mb</code>. Si la diferencia supera el margen configurado: <code>WARN vram drift: gpu_id=... ledger_free_mb=... reported_free_mb=... delta_mb=...</code></p>
+
+      <div class="section-title">Qué se cambió</div>
+      <ul class="file-list">
+        <li><span class="file-name">api/internal/config/config.go</span><span class="file-desc">— Campo <code>VRAMDriftMarginMB</code> desde <code>VRAM_DRIFT_MARGIN_MB</code> (default 512 MB).</span></li>
+        <li><span class="file-name">api/internal/workers/store.go</span><span class="file-desc">— Función pura <code>vramDriftExceeded(ledger, reported, margin)</code> + <code>checkVRAMDrift</code> best-effort (silencio en error o worker sin GPU). <code>IngestMetrics</code> recibe el margen y llama <code>checkVRAMDrift</code> tras el commit.</span></li>
+        <li><span class="file-name">api/internal/workers/drift_test.go</span> <span class="file-new">NEW</span><span class="file-desc">— 8 casos unitarios para <code>vramDriftExceeded</code>: dentro del margen, en el límite exacto, un MB sobre el margen, delta inverso, margen cero.</span></li>
+      </ul>
+
+      <div class="section-title">Decisión consciente: solo log, sin corrección automática</div>
+      <div class="decision">
+        <strong>Sin auto-corrección del ledger</strong>
+        <p>El ledger es la fuente de verdad para el scheduler. Corregirlo automáticamente con métricas externas podría enmascarar bugs reales en la lógica de claim/release. La corrección automática se evalúa en F3+ cuando haya más datos de producción. En F2, el warning es insumo diagnóstico.</p>
+      </div>
+
+      <div class="section-title">Verificado en hardware real (2026-06-13)</div>
+      <ul class="test-list">
+        <li>Ledger: 16376 MB libres (sin jobs en vuelo). GPU real: ~14.6 GB libres. Delta: ~1.7 GB por SO y drivers.</li>
+        <li>WARN aparece correctamente en logs de la API por superar el margen de 512 MB</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- T2.11 -->
+  <div class="task">
+    <div class="task-header">
+      <div class="task-id">T2.11</div>
+      <div class="task-meta">
+        <div class="task-title">Job de retención de worker_metrics</div>
+        <div class="task-desc">Goroutine que cada 24h agrega las filas de más de 7 días a worker_metrics_hourly y borra las crudas.</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo</span>
+          <span class="chip chip-orange">3 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-11</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> a 10s por muestra, <code>worker_metrics</code> crece ~8640 filas/día por worker. Sin retención, la tabla crece indefinidamente. El dashboard de F5 solo necesita detalle reciente; el histórico puede estar agregado por hora.</p>
+
+      <div class="section-title">Schema de la tabla de agregados</div>
+      <div class="migration">
+        <span class="kw">CREATE TABLE</span> <span class="tb">worker_metrics_hourly</span> (<br>
+        &nbsp;&nbsp;worker_id    TEXT <span class="kw">NOT NULL</span>,<br>
+        &nbsp;&nbsp;hour         TIMESTAMPTZ <span class="kw">NOT NULL</span>, <span class="cm">-- truncado a la hora</span><br>
+        &nbsp;&nbsp;cpu_pct_avg  NUMERIC, cpu_pct_max NUMERIC,<br>
+        &nbsp;&nbsp;vram_free_avg NUMERIC, <span class="cm">-- promedio</span><br>
+        &nbsp;&nbsp;vram_free_min NUMERIC, <span class="cm">-- peor caso de la hora</span><br>
+        &nbsp;&nbsp;gpu_util_avg NUMERIC, temperature_avg NUMERIC,<br>
+        &nbsp;&nbsp;power_avg NUMERIC, ram_used_avg NUMERIC,<br>
+        &nbsp;&nbsp;sample_count INTEGER,<br>
+        &nbsp;&nbsp;<span class="kw">PRIMARY KEY</span> (worker_id, hour)<br>
+        );
+      </div>
+
+      <div class="section-title">Qué se creó</div>
+      <ul class="file-list">
+        <li><span class="file-name">migrations/0003_worker_metrics_hourly.up.sql</span> <span class="file-new">NEW</span><span class="file-desc">— Tabla <code>worker_metrics_hourly</code>.</span></li>
+        <li><span class="file-name">api/internal/retention/retention.go</span> <span class="file-new">NEW</span><span class="file-desc">— <code>Compact(ctx, pool)</code>: <code>INSERT … ON CONFLICT DO NOTHING</code> + <code>DELETE</code> en la misma transacción. <code>Run(ctx, pool)</code> con tick de 24h.</span></li>
+        <li><span class="file-name">api/main.go</span><span class="file-desc">— <code>go retention.Run(ctx, pool)</code> junto a <code>monitor.Run</code>.</span></li>
+      </ul>
+
+      <div class="section-title">Clave de idempotencia</div>
+      <div class="decision">
+        <strong>ON CONFLICT DO NOTHING + DELETE separado</strong>
+        <p>Si el proceso se cae tras el INSERT pero antes del DELETE, la segunda ejecución encuentra el agregado ya existente (<code>DO NOTHING</code>) y completa el DELETE. El invariante es que si hay un agregado para esa hora, borrar las filas crudas es siempre correcto.</p>
+      </div>
+
+      <div class="section-title">Tests de integración (PostgreSQL real)</div>
+      <ul class="test-list">
+        <li>Filas de más de 7 días → compactadas; filas recientes → intactas</li>
+        <li>Segunda ejecución → no duplica agregados ni pierde datos (idempotencia)</li>
+        <li>3 horas distintas → 3 filas en worker_metrics_hourly</li>
+        <li>Solo datos recientes → sin agregados, sin borrados</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- T2.12 -->
+  <div class="task">
+    <div class="task-header">
+      <div class="task-id">T2.12</div>
+      <div class="task-meta">
+        <div class="task-title">Pruebas de resiliencia end-to-end</div>
+        <div class="task-desc">Checklist ejecutado contra hardware real: reinicio ialab, caída VPS 7 min, alerta de deriva.</div>
+        <div class="task-chips">
+          <span class="chip chip-devops">DevOps</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-13</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> los criterios de aceptación de resiliencia no pueden verificarse en CI (requieren systemd real, hardware GPU, red Tailscale). Se ejecutaron manualmente el 2026-06-13 contra el sistema en producción.</p>
+
+      <div class="section-title">Qué se creó</div>
+      <ul class="file-list">
+        <li><span class="file-name">docs/RUNBOOKS/resilience-f2.md</span> <span class="file-new">NEW</span><span class="file-desc">— Runbook con los 3 escenarios, comandos exactos, SQL de verificación y tabla de resultados rellenada.</span></li>
+        <li><span class="file-name">docs/RUNBOOKS/resilience-f2.html</span> <span class="file-new">NEW</span><span class="file-desc">— Versión HTML del runbook con los outputs reales de cada paso.</span></li>
+        <li><span class="file-name">api/integration_test.go</span><span class="file-desc">— <code>TestMetricsBufferFlushPreservesTimestamps</code>: verifica en PostgreSQL real que recorded_at se preserva en batches de reconexión.</span></li>
+      </ul>
+
+      <div class="section-title">Resultados</div>
+      <table>
+        <tr><th>Escenario</th><th>Resultado</th><th>Detalle clave</th></tr>
+        <tr><td>Reboot ialab</td><td class="pass">✅ PASS</td><td>Agente online ~2 min después del reboot (04:33 → 04:34:59 UTC)</td></tr>
+        <tr><td>VPS caído 7 min</td><td class="pass">✅ PASS</td><td>Backoff 5s→300s, lote enviado al reconectar, recorded_at preservados</td></tr>
+        <tr><td>Alerta deriva ledger</td><td class="pass">✅ PASS</td><td>delta_mb=926 &gt; margin_mb=512 → WARN en logs de API</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- T2.13 -->
+  <div class="task">
+    <div class="task-header">
+      <div class="task-id">T2.13</div>
+      <div class="task-meta">
+        <div class="task-title">Documentación operativa</div>
+        <div class="task-desc">IALAB.md actualizado con procedimiento de instalación, variables, comandos y troubleshooting. PROJECT.md creado.</div>
+        <div class="task-chips">
+          <span class="chip chip-doc">Documentación</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-11</div>
+    </div>
+    <div class="task-body">
+      <div class="section-title">Qué se documentó</div>
+      <ul class="file-list">
+        <li><span class="file-name">docs/IALAB.md</span><span class="file-desc">— Variables de entorno del agente (6 vars con descripción y ejemplo), comandos de start/stop/restart, endpoint <code>/metrics</code> local, sección de Troubleshooting (agente sin reportar en 5 pasos, deriva del ledger, fallo de arranque).</span></li>
+        <li><span class="file-name">PROJECT.md</span> <span class="file-new">NEW</span><span class="file-desc">— Estado de fases F0–F7, infraestructura activa, decisiones de diseño registradas, parámetros operativos de ialab (VRAM, intervalos, margen de deriva, retención), próximos pasos de F3.</span></li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- DEUDA TECNICA -->
+  <h2>Deuda técnica registrada para F3+</h2>
+
+  <div class="debt">
+    <strong style="color:#f6ad55;">Insert en loop individual (T2.3)</strong> — suficiente para buffers de decenas de muestras. Si el buffer crece a miles, considerar <code>pgx.CopyFrom</code>.
+  </div>
+  <div class="debt">
+    <strong style="color:#f6ad55;">Sin límite de tamaño de batch en el endpoint (T2.3)</strong> — no es problema con el agente (buffer acotado), pero a tener en cuenta si el endpoint se expone a más clientes.
+  </div>
+  <div class="debt">
+    <strong style="color:#f6ad55;">AGENT_ADMIN_KEY en el agente (T2.6)</strong> — el agente necesita el admin key solo para el registro inicial. Si en el futuro se quiere reducir privilegios, se añade un endpoint de registro con worker key.
+  </div>
+  <div class="debt">
+    <strong style="color:#f6ad55;">Loop single-threaded en reporter.py (T2.7)</strong> — si <code>collect()</code> bloquea por lentitud del driver, el intervalo de 10s se desfasa. No es problema en F2; en F3+ podría justificar un thread separado.
+  </div>
+  <div class="debt">
+    <strong style="color:#f6ad55;">Compactación sin ejecución al arrancar (T2.11)</strong> — el job corre cada 24h. Si la API ha estado caída días, la primera compactación se produce en el siguiente tick. Para backfill inmediato se puede añadir una llamada inicial en <code>Run</code>.
+  </div>
+  <div class="debt">
+    <strong style="color:#f6ad55;">Usuario del servicio = $(whoami) (T2.9)</strong> — si el script se ejecuta como root, el agente corre como root. Inofensivo en homelab; deuda si se expande a más nodos.
+  </div>
+
+  <!-- SIGUIENTE FASE -->
+  <h2>Siguiente fase — F3: Worker base Python</h2>
+
+  <div style="background:#1a1f2e;border:1px solid #2d3748;border-radius:10px;padding:1.4rem 1.6rem;margin-top:0.5rem;">
+    <p style="font-size:0.85rem;color:#a0aec0;margin-bottom:0.8rem;">Con F2 completada, los datos de hardware fluyen de ialab al VPS cada 10s. F3 construye sobre esto el scaffolding para los workers de inferencia que correrán en Docker en ialab.</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;font-size:0.82rem;">
+      <div style="color:#a0aec0;">→ Paquete <code style="color:#63b3ed;">worker_base</code>: registro, heartbeat, claim loop, fencing</div>
+      <div style="color:#a0aec0;">→ Dockerfile base + worker-echo de ejemplo</div>
+      <div style="color:#a0aec0;">→ Prueba de integración real VPS ↔ ialab con Docker</div>
+      <div style="color:#a0aec0;">→ Los workers consultan <code style="color:#63b3ed;">/metrics</code> del agente para ver VRAM disponible</div>
+    </div>
+  </div>
+
+</div>
+
+<div class="footer">
+  Generado el 2026-06-13 &mdash; AI Worker Platform feature/f2 &mdash; docs/HTML/f2-implementacion.html
+</div>
+
+</body>
+</html>

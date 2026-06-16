@@ -3,13 +3,16 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 )
 
 type Config struct {
-	DatabaseURL  string
-	ListenAddr   string
-	AdminAPIKey  string
-	VRAMMarginMB int
+	DatabaseURL       string
+	ListenAddr        string
+	AdminAPIKey       string
+	VRAMMarginMB      int
+	VRAMDriftMarginMB int
+	FileServerURL     string
 }
 
 func Load() (*Config, error) {
@@ -25,10 +28,25 @@ func Load() (*Config, error) {
 	if addr == "" {
 		addr = ":8080"
 	}
+	driftMargin := 512
+	if s := os.Getenv("VRAM_DRIFT_MARGIN_MB"); s != "" {
+		if v, err := strconv.Atoi(s); err == nil {
+			driftMargin = v
+		}
+	}
+	// T4.9: allow adjusting VRAM margin after measuring real model overhead.
+	vramMargin := 500
+	if s := os.Getenv("VRAM_MARGIN_MB"); s != "" {
+		if v, err := strconv.Atoi(s); err == nil && v >= 0 {
+			vramMargin = v
+		}
+	}
 	return &Config{
-		DatabaseURL:  dbURL,
-		ListenAddr:   addr,
-		AdminAPIKey:  adminKey,
-		VRAMMarginMB: 500,
+		DatabaseURL:       dbURL,
+		ListenAddr:        addr,
+		AdminAPIKey:       adminKey,
+		VRAMMarginMB:      vramMargin,
+		VRAMDriftMarginMB: driftMargin,
+		FileServerURL:     os.Getenv("FILE_SERVER_URL"),
 	}, nil
 }

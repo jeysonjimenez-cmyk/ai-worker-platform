@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fase 4.5 — SDK mínimo + Video Crack transcribe en producción</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f1117; color: #e2e8f0; line-height: 1.6; }
+
+    /* HEADER */
+    .header { background: linear-gradient(135deg, #1a1f2e 0%, #0f1117 100%); border-bottom: 1px solid #2d3748; padding: 2.5rem 3rem; }
+    .header h1 { font-size: 1.7rem; font-weight: 800; color: #f7fafc; letter-spacing: -0.02em; }
+    .header .subtitle { font-size: 0.95rem; color: #718096; margin-top: 0.3rem; }
+    .badges { display: flex; gap: 0.5rem; margin-top: 0.9rem; flex-wrap: wrap; }
+    .badge { display: inline-block; padding: 0.2rem 0.7rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
+    .badge-green { background: #1a4731; color: #68d391; border: 1px solid #276749; }
+    .badge-blue { background: #1a2744; color: #63b3ed; border: 1px solid #2b4c8c; }
+    .badge-purple { background: #2d1f4e; color: #b794f4; border: 1px solid #553c9a; }
+    .badge-orange { background: #3d2200; color: #f6ad55; border: 1px solid #7b4d00; }
+    .badge-teal { background: #1a3535; color: #4fd1c5; border: 1px solid #2c6060; }
+
+    /* LAYOUT */
+    .container { max-width: 980px; margin: 0 auto; padding: 2rem 3rem 4rem; }
+
+    /* RESUMEN GRID */
+    .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin: 2rem 0; }
+    .card { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 10px; padding: 1.2rem 1.4rem; }
+    .card .label { font-size: 0.72rem; color: #718096; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.4rem; }
+    .card .value { font-size: 1.6rem; font-weight: 800; color: #68d391; }
+    .card .sub { font-size: 0.78rem; color: #a0aec0; margin-top: 0.15rem; }
+
+    /* ARQUITECTURA */
+    .arch-diagram { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 10px; padding: 1.5rem 2rem; margin: 1.5rem 0; font-family: 'Fira Code', monospace; font-size: 0.82rem; line-height: 1.8; color: #a0aec0; }
+    .arch-diagram .hl { color: #68d391; font-weight: 600; }
+    .arch-diagram .hl2 { color: #63b3ed; font-weight: 600; }
+    .arch-diagram .hl3 { color: #b794f4; font-weight: 600; }
+    .arch-diagram .dim { color: #4a5568; }
+
+    /* TASK CARDS */
+    h2 { font-size: 1rem; font-weight: 700; color: #a0aec0; margin: 2.5rem 0 1rem; text-transform: uppercase; letter-spacing: 0.08em; padding-bottom: 0.4rem; border-bottom: 1px solid #2d3748; }
+
+    .task { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 10px; margin-bottom: 1.2rem; overflow: hidden; }
+    .task-header { display: flex; align-items: flex-start; gap: 1rem; padding: 1.1rem 1.4rem; cursor: pointer; user-select: none; }
+    .task-header:hover { background: #1e2535; }
+    .task-id { font-size: 0.72rem; font-weight: 700; color: #4a5568; font-family: monospace; white-space: nowrap; padding-top: 0.1rem; }
+    .task-meta { flex: 1; }
+    .task-title { font-size: 0.95rem; font-weight: 700; color: #f7fafc; }
+    .task-desc { font-size: 0.82rem; color: #718096; margin-top: 0.2rem; }
+    .task-chips { display: flex; gap: 0.4rem; margin-top: 0.5rem; flex-wrap: wrap; }
+    .chip { font-size: 0.7rem; padding: 0.15rem 0.55rem; border-radius: 4px; font-weight: 500; }
+    .chip-dev { background: #1a2744; color: #63b3ed; }
+    .chip-infra { background: #2d1f4e; color: #b794f4; }
+    .chip-devops { background: #3d2200; color: #f6ad55; }
+    .chip-doc { background: #1a3a2a; color: #68d391; }
+    .chip-sec { background: #3d1a1a; color: #fc8181; }
+    .chip-time { background: #161b27; color: #718096; border: 1px solid #2d3748; }
+    .task-status { font-size: 0.75rem; color: #68d391; font-weight: 700; white-space: nowrap; padding-top: 0.1rem; }
+    .task-toggle { font-size: 0.75rem; color: #4a5568; margin-left: 0.5rem; padding-top: 0.1rem; transition: transform 0.2s; }
+    .task.open .task-toggle { transform: rotate(180deg); }
+
+    .task-body { padding: 0 1.4rem 1.2rem; border-top: 1px solid #1e2535; display: none; }
+    .task.open .task-body { display: block; }
+    .task-body p { font-size: 0.85rem; color: #a0aec0; margin: 1rem 0 0.6rem; }
+    .task-body p strong { color: #e2e8f0; }
+
+    /* SECTIONS WITHIN TASK */
+    .section { margin-bottom: 1rem; }
+    .section-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; color: #4a5568; margin-bottom: 0.5rem; margin-top: 0.8rem; }
+
+    /* FILES */
+    .file-list { list-style: none; }
+    .file-list li { display: flex; align-items: flex-start; gap: 0.6rem; padding: 0.4rem 0; border-bottom: 1px solid #161b27; font-size: 0.82rem; }
+    .file-list li:last-child { border-bottom: none; }
+    .file-name { font-family: monospace; color: #63b3ed; white-space: nowrap; flex-shrink: 0; }
+    .file-desc { color: #a0aec0; }
+    .file-new { font-size: 0.65rem; font-weight: 700; color: #68d391; background: #1a3a2a; border: 1px solid #276749; padding: 0.05rem 0.35rem; border-radius: 3px; margin-left: 0.3rem; flex-shrink: 0; }
+
+    /* TESTS */
+    .test-list { list-style: none; }
+    .test-list li { display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.3rem 0; font-size: 0.82rem; color: #a0aec0; }
+    .test-list li::before { content: '✓'; color: #68d391; font-weight: 700; flex-shrink: 0; margin-top: 0.05rem; }
+
+    /* DECISIONS */
+    .decision { background: #161b27; border-left: 3px solid #4299e1; border-radius: 0 6px 6px 0; padding: 0.65rem 1rem; margin: 0.4rem 0; font-size: 0.82rem; }
+    .decision strong { color: #63b3ed; display: block; margin-bottom: 0.15rem; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.03em; }
+    .decision p { color: #a0aec0; margin: 0; }
+
+    /* DEBT */
+    .debt { background: #2d1800; border-left: 3px solid #f6ad55; border-radius: 0 6px 6px 0; padding: 0.65rem 1rem; margin: 0.4rem 0; font-size: 0.82rem; color: #fbd38d; }
+
+    /* BUG / ISSUE FOUND */
+    .bug { background: #2d1a1a; border-left: 3px solid #fc8181; border-radius: 0 6px 6px 0; padding: 0.65rem 1rem; margin: 0.4rem 0; font-size: 0.82rem; }
+    .bug strong { color: #fc8181; display: block; margin-bottom: 0.15rem; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.03em; }
+    .bug p { color: #fbd38d; margin: 0; }
+
+    /* TABLE */
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin: 0.5rem 0; }
+    th { background: #161b27; color: #718096; padding: 0.45rem 0.8rem; text-align: left; font-weight: 600; border-bottom: 1px solid #2d3748; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    td { padding: 0.45rem 0.8rem; border-bottom: 1px solid #161b27; color: #e2e8f0; vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+    td code { font-family: monospace; background: #161b27; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.78rem; color: #63b3ed; }
+    .pass { color: #68d391; font-weight: 600; }
+
+    /* RETRO SECTION */
+    .retro-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
+    .retro-card { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 8px; padding: 1.1rem 1.3rem; }
+    .retro-card h3 { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.6rem; }
+    .retro-card h3.good { color: #68d391; }
+    .retro-card h3.risk { color: #f6ad55; }
+    .retro-card h3.lesson { color: #b794f4; }
+    .retro-card ul { list-style: none; }
+    .retro-card ul li { font-size: 0.82rem; color: #a0aec0; padding: 0.25rem 0; border-bottom: 1px solid #1e2535; }
+    .retro-card ul li:last-child { border-bottom: none; }
+    .retro-card ul li::before { content: '→ '; color: #4a5568; }
+
+    /* FOOTER */
+    .footer { text-align: center; padding: 2rem; font-size: 0.75rem; color: #4a5568; border-top: 1px solid #1a1f2e; margin-top: 3rem; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Fase 4.5 — SDK mínimo + Video Crack transcribe en producción</h1>
+  <div class="subtitle">Implementación completa · AI Worker Platform · feature/f4.5</div>
+  <div class="badges">
+    <span class="badge badge-green">✅ Completada 2026-06-16</span>
+    <span class="badge badge-blue">10 tareas</span>
+    <span class="badge badge-purple">SDK Python + integración Video Crack</span>
+    <span class="badge badge-orange">SSRF estricto en producción</span>
+    <span class="badge badge-teal">5/5 E2E PASS · corpus 90.5–97.3%</span>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- RESUMEN NUMÉRICO -->
+  <div class="summary-grid">
+    <div class="card">
+      <div class="label">Archivos nuevos</div>
+      <div class="value">8</div>
+      <div class="sub">SDK client, tests, runbooks, SDK.md</div>
+    </div>
+    <div class="card">
+      <div class="label">Tests añadidos</div>
+      <div class="value">7</div>
+      <div class="sub">4 SDK integration + 3 downloader SSRF</div>
+    </div>
+    <div class="card">
+      <div class="label">Escenarios E2E</div>
+      <div class="value">5/5</div>
+      <div class="sub">corpus 5 videos · hardware real</div>
+    </div>
+    <div class="card">
+      <div class="label">Similitud mínima</div>
+      <div class="value">90.5%</div>
+      <div class="sub">todos PARIDAD_ACEPTABLE (≥85%)</div>
+    </div>
+  </div>
+
+  <!-- ARQUITECTURA -->
+  <h2>Qué hace el sistema después de F4.5</h2>
+
+  <div class="arch-diagram">
+    <span class="dim">┌────────────────────── Video Crack (cliente externo) ─────────────────┐</span><br>
+    │  <span class="hl">TRANSCRIBE_MODE=both</span> → legacy (streaming) + plataforma en background │<br>
+    │  <span class="hl2">GET /tradu/jobs/{id}/audio</span> → sirve audio.mp3 como URL https:// pública │<br>
+    │  <span class="hl3">GET /tradu/jobs/{id}/compare</span> → similitud VTT legacy vs plataforma    │<br>
+    <span class="dim">└──────────────────────────────────────────────────────────────────────┘</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">│  SDK ai_platform_client  (httpx)</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">↓</span><br>
+    <span class="dim">┌──────────────────────── VPS 100.106.192.45 ─────────────────────────┐</span><br>
+    │  <span class="hl">API Go</span>  ←  <span class="hl2">X-App-Key: video-crack</span>  (activa en DB desde T4.5.1)      │<br>
+    │  ├─ POST /ai/jobs  (<code style="color:#b794f4;font-size:0.8em;">service: transcription</code>, audio_url https://)    │<br>
+    │  ├─ GET /ai/jobs/{id}  (polling en wait())                         │<br>
+    │  └─ GET /ai/jobs/{id}/files/{filename}  (proxy streaming → ialab)  │<br>
+    <span class="dim">└──────────────────────────────────────────────────────────────────────┘</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">│  Tailscale · SSRF activo (ALLOW_HTTP_AUDIO removido)</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">↓</span><br>
+    <span class="dim">┌──────────────────────── ialab 100.103.55.110 ───────────────────────┐</span><br>
+    │  <span class="hl">worker-whisper</span> · faster-whisper large-v2 · RTX 4070 Ti SUPER       │<br>
+    │  VRAM pico: <span class="hl2">5060 MiB</span>  ·  margen sobre MIN_VRAM=5500: <span class="hl3">440 MiB</span>     │<br>
+    │  Caos F4.5: parar mid-job → requeue <span class="hl2">54s</span>, retoma <span class="hl2">&lt;10s</span>              │<br>
+    <span class="dim">└──────────────────────────────────────────────────────────────────────┘</span>
+  </div>
+
+  <!-- TAREAS -->
+  <h2>Tareas implementadas <span style="font-size:0.75rem;color:#4a5568;font-weight:400;text-transform:none;letter-spacing:0;">(click para expandir)</span></h2>
+
+  <!-- T4.5.1 -->
+  <div class="task open" onclick="this.classList.toggle('open')">
+    <div class="task-header">
+      <div class="task-id">T4.5.1</div>
+      <div class="task-meta">
+        <div class="task-title">Provisionar API key de app de producción para Video Crack</div>
+        <div class="task-desc">Runbook completo de alta de apps: generación de key, INSERT SQL en <code style="font-size:0.85em;color:#63b3ed;">apps</code>, verificación con curl, rotación y revocación. La key real no se commitea.</div>
+        <div class="task-chips">
+          <span class="chip chip-devops">DevOps</span>
+          <span class="chip chip-time">1 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-15</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> Video Crack necesita un <code>X-App-Key</code> real en producción — distinta a la usada durante los e2e de F4 — para poder llamar a la API del VPS. El runbook es el procedimiento oficial para dar de alta cualquier app cliente, incluyendo rotación y revocación futura.</p>
+
+      <div class="section-title">Archivos creados</div>
+      <ul class="file-list">
+        <li><span class="file-name">docs/RUNBOOKS/f4.5-provisioning-apps.md</span> <span class="file-new">NEW</span><span class="file-desc">— Procedimiento completo: generación de key, INSERT SQL en <code>apps</code>, verificación con curl, rotación y revocación. Tabla de estado de apps en producción. La key real vive en los secretos del equipo, no en el repo.</span></li>
+      </ul>
+
+      <div class="decision">
+        <strong>max_daily_usd = 100.00 como placeholder</strong>
+        <p>El campo existe en el esquema pero el enforcement es responsabilidad de F9 (billing). El valor 100 USD/día es un techo de seguridad, no un límite operacional real durante la fase de validación.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T4.5.2 -->
+  <div class="task open" onclick="this.classList.toggle('open')">
+    <div class="task-header">
+      <div class="task-id">T4.5.2</div>
+      <div class="task-meta">
+        <div class="task-title">SDK Python mínimo: <code style="font-size:0.85em;color:#63b3ed;">create_job</code> + <code style="font-size:0.85em;color:#63b3ed;">wait</code> + <code style="font-size:0.85em;color:#63b3ed;">download</code></div>
+        <div class="task-desc">Paquete <code style="font-size:0.85em;color:#63b3ed;">ai-platform-client</code> con los tres métodos del contrato. Backoff exponencial en wait(). Streaming sin buffer en download(). Una sola dependencia de producción: httpx.</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo</span>
+          <span class="chip chip-time">3 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-15</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> Video Crack necesita integrarse con la plataforma sin implementar el protocolo HTTP+polling a mano. El SDK encapsula los tres pasos del ciclo (crear → esperar → descargar) con las decisiones correctas de backoff, timeout y streaming — criterio: lo mínimo que Video Crack usa hoy, nada más.</p>
+
+      <div class="section-title">Archivos creados</div>
+      <ul class="file-list">
+        <li><span class="file-name">client/pyproject.toml</span> <span class="file-new">NEW</span><span class="file-desc">— Paquete <code>ai-platform-client</code> (Python 3.12 + uv). Única dependencia de producción: <code>httpx&gt;=0.28.0</code>.</span></li>
+        <li><span class="file-name">client/uv.lock</span> <span class="file-new">NEW</span><span class="file-desc">— Versiones congeladas: httpx 0.28.x + 14 dependencias transitivas.</span></li>
+        <li><span class="file-name">client/ai_platform_client/__init__.py</span> <span class="file-new">NEW</span><span class="file-desc">— Exporta <code>Client</code> y <code>JobTimeoutError</code>.</span></li>
+        <li><span class="file-name">client/ai_platform_client/client.py</span> <span class="file-new">NEW</span><span class="file-desc">— <code>Client(base_url, app_key)</code> con los tres métodos: <code>create_job()</code> (envía <code>X-App-Key</code>, mapea prioridad), <code>wait()</code> (backoff 2→4→8…tope 30s, corte por deadline, lanza <code>JobTimeoutError</code>), <code>download()</code> (streaming con <code>httpx.stream()</code>, sin buffer en memoria, lanza <code>RuntimeError</code> en 503).</span></li>
+      </ul>
+
+      <div class="decision">
+        <strong>Solo tres métodos públicos (criterio R5)</strong>
+        <p>El SDK expone exactamente lo que Video Crack usa hoy. No hay cuarto método, no hay paginación de jobs, no hay cancelación — eso se añade cuando haya un segundo cliente que lo necesite. Tres métodos similares no justifican una abstracción mayor.</p>
+      </div>
+
+      <div class="decision">
+        <strong>download() con timeout=None en el stream</strong>
+        <p>Un VTT de 4.2 h puede tomar segundos en descargarse. Un timeout fijo de red cortaría descargas legítimas. <code>timeout=None</code> en el stream es la decisión correcta para archivos de tamaño variable; el timeout de "job completo" ya lo maneja <code>wait()</code>.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T4.5.3 -->
+  <div class="task" onclick="this.classList.toggle('open')">
+    <div class="task-header">
+      <div class="task-id">T4.5.3</div>
+      <div class="task-meta">
+        <div class="task-title">Tests del SDK contra la API real (staging, sin mocks)</div>
+        <div class="task-desc">4 tests de integración. El test de 503 usa un servidor HTTP real de stdlib — no es un mock. Los tres tests de staging se omiten si las variables de entorno no están configuradas.</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo · Tests</span>
+          <span class="chip chip-time">2 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-15</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> las convenciones del proyecto prohíben mocks de base de datos en Go, y el mismo espíritu aplica al SDK: el comportamiento ante 503 no se puede probar con un mock de librería — se necesita un servidor real que devuelva 503. Los tests de staging validan el contrato contra la API de producción/staging real.</p>
+
+      <div class="section-title">Archivos creados</div>
+      <ul class="file-list">
+        <li><span class="file-name">client/tests/__init__.py</span> <span class="file-new">NEW</span><span class="file-desc">— Módulo vacío (convención del proyecto).</span></li>
+        <li><span class="file-name">client/tests/test_sdk_integration.py</span> <span class="file-new">NEW</span><span class="file-desc">— 4 tests: <code>test_create_job_wait_done</code> (ciclo completo contra staging), <code>test_download_retrieves_vtt</code> (verifica cabecera WEBVTT), <code>test_wait_timeout_raises</code> (<code>JobTimeoutError</code> con <code>timeout=0.1</code>), <code>test_download_503_raises</code> (servidor stdlib que devuelve 503 — siempre corre, sin staging).</span></li>
+      </ul>
+
+      <div class="decision">
+        <strong>Servidor HTTP de stdlib para el test 503</strong>
+        <p>Un <code>http.server.HTTPServer</code> en un thread de stdlib es un servidor HTTP real, no un mock de librería. El SDK ve un 503 genuino desde un socket TCP real. Esto es coherente con la postura "sin mocks" del proyecto y no añade dependencias de testing.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T4.5.4 -->
+  <div class="task" onclick="this.classList.toggle('open')">
+    <div class="task-header">
+      <div class="task-id">T4.5.4</div>
+      <div class="task-meta">
+        <div class="task-title">Documentación del contrato: ejemplos curl + SDK (onboarding)</div>
+        <div class="task-desc">SDK.md con ejemplos curl y SDK lado a lado. Restricción audio_url prominente al inicio. Referencia de los tres métodos. Tabla de errores frecuentes.</div>
+        <div class="task-chips">
+          <span class="chip chip-doc">Documentación</span>
+          <span class="chip chip-time">1 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-15</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> integrar un nuevo cliente (la segunda app después de Video Crack) hoy requeriría leer el código del SDK o los tests. <code>SDK.md</code> es la guía de onboarding: un desarrollador que nunca vio la plataforma puede enviar su primer job en 5 minutos.</p>
+
+      <div class="section-title">Archivos creados</div>
+      <ul class="file-list">
+        <li><span class="file-name">docs/SDK.md</span> <span class="file-new">NEW</span><span class="file-desc">— Ciclo completo (crear → esperar → descargar) en curl y SDK lado a lado. Restricción <code>audio_url</code> (<code>https://</code> público, sin IPs privadas/Tailscale) documentada prominentemente. Referencia de los tres métodos con parámetros y tipos. Archivos de salida disponibles (<code>output.vtt</code>, <code>output.srt</code>, <code>output.json</code>). Tabla de errores frecuentes con causas y soluciones. Tabla de servicios disponibles.</span></li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- T4.5.5 -->
+  <div class="task open" onclick="this.classList.toggle('open')">
+    <div class="task-header">
+      <div class="task-id">T4.5.5</div>
+      <div class="task-meta">
+        <div class="task-title">Integración de transcripción en Video Crack detrás de flag (legacy / platform / both)</div>
+        <div class="task-desc">Flag de tres posiciones en TRANSCRIBE_MODE. Modo <code>both</code>: legacy (streaming al UI) + plataforma en background thread. Endpoint /tradu/jobs/{id}/audio para servir el audio como URL https:// pública.</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo · Video Crack</span>
+          <span class="chip chip-time">4 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-15</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> Video Crack no puede cortar su sistema de transcripción viejo de golpe — necesita comparar las salidas en producción antes de migrar. El flag de tres posiciones permite correr ambos en paralelo (<code>both</code>) sin afectar la experiencia del usuario (la plataforma va en background). El endpoint de audio cumple el requisito SSRF: el worker solo acepta <code>https://</code> público.</p>
+
+      <div class="section-title">Archivos modificados</div>
+      <ul class="file-list">
+        <li><span class="file-name">../video-crack/backend/routers/tradu.py</span><span class="file-desc">— <code>_transcribe_via_platform()</code> (envía job, espera, descarga VTT, emite segmentos vía <code>on_segment</code>). <code>_submit_platform_background()</code> (thread daemon fire-and-forget para modo <code>both</code>; guarda <code>subtitles.platform_original.vtt</code>). <code>_process()</code> step 2 ruteado por <code>TRANSCRIBE_MODE</code>: <code>legacy</code> → Whisper local; <code>platform</code> → solo plataforma; <code>both</code> → Whisper local + plataforma en background. <code>GET /tradu/jobs/{id}/audio</code> → sirve <code>audio.mp3</code> como URL https:// pública (cumple R1 SSRF).</span></li>
+        <li><span class="file-name">../video-crack/backend/requirements.txt</span><span class="file-desc">— Añade <code>httpx&gt;=0.28.0</code>.</span></li>
+      </ul>
+
+      <div class="section-title">Configuración por env vars</div>
+      <table>
+        <tr><th>Variable</th><th>Default</th><th>Descripción</th></tr>
+        <tr><td><code>TRANSCRIBE_MODE</code></td><td><code>both</code></td><td>Modo: <code>legacy</code>, <code>platform</code> o <code>both</code></td></tr>
+        <tr><td><code>PLATFORM_API_URL</code></td><td><code>""</code></td><td>URL base de la API de la plataforma</td></tr>
+        <tr><td><code>PLATFORM_APP_KEY</code></td><td><code>""</code></td><td><code>X-App-Key</code> de Video Crack</td></tr>
+        <tr><td><code>PLATFORM_JOB_TIMEOUT</code></td><td><code>600</code></td><td>Segundos máximos esperando la plataforma</td></tr>
+        <tr><td><code>PUBLIC_BASE_URL</code></td><td><code>""</code></td><td>URL HTTPS pública de Video Crack (para construir <code>audio_url</code>)</td></tr>
+      </table>
+
+      <div class="decision">
+        <strong>Modo both: errores no bloquean el pipeline</strong>
+        <p>Si <code>PUBLIC_BASE_URL</code>/<code>PLATFORM_API_URL</code>/<code>PLATFORM_APP_KEY</code> no están configuradas, el job corre solo en <code>legacy</code> sin error — el background job simplemente no se lanza. Esto permite desplegar sin configurar la plataforma primero, y garantiza que un fallo de la plataforma no bloquea al usuario.</p>
+      </div>
+
+      <div class="decision">
+        <strong>El audio endpoint no requiere que el job esté en done</strong>
+        <p>El audio puede servirse en cuanto está descargado (paso 1 del pipeline de Video Crack). El worker de la plataforma llama al endpoint durante el paso 2 de transcripción — no hay carrera de condición porque el archivo ya existe en disco.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T4.5.6 -->
+  <div class="task" onclick="this.classList.toggle('open')">
+    <div class="task-header">
+      <div class="task-id">T4.5.6</div>
+      <div class="task-meta">
+        <div class="task-title">Comparador de salidas (transcript viejo vs plataforma)</div>
+        <div class="task-desc">compare_vtt_files(): similitud via difflib.SequenceMatcher + análisis de timing. Veredicto automático: PARIDAD_ACEPTABLE (≥85%), REVISAR (≥70%), REGRESION (&lt;70%). CLI con exit code 1 si no es paridad.</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo · Video Crack</span>
+          <span class="chip chip-time">3 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-15</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> comparar dos VTTs de transcripción a ojo es imposible para audios de horas. La herramienta cuantifica la similitud de texto (ignorando puntuación) y el alineamiento de timing, y emite un veredicto binario que puede usarse como criterio de aceptación automatizable.</p>
+
+      <div class="section-title">Archivos creados</div>
+      <ul class="file-list">
+        <li><span class="file-name">../video-crack/scripts/compare_transcripts.py</span> <span class="file-new">NEW</span><span class="file-desc">— <code>compare_vtt_files(vtt_a, vtt_b, *, lang_a, lang_b) → dict</code>: similitud de texto via <code>difflib.SequenceMatcher</code> (texto normalizado: minúsculas, sin puntuación), alineamiento de timing (±1s de tolerancia), veredicto automático. <code>format_report(result) → str</code>: salida legible, tope de 20 bloques de diferencia. CLI: <code>python scripts/compare_transcripts.py &lt;job_id&gt;</code> o <code>--vtt-a/--vtt-b</code>. Flag <code>--json</code>. Exit code 1 si no es PARIDAD_ACEPTABLE.</span></li>
+      </ul>
+
+      <div class="section-title">Archivos modificados</div>
+      <ul class="file-list">
+        <li><span class="file-name">../video-crack/backend/routers/tradu.py</span><span class="file-desc">— <code>_submit_platform_background()</code> guarda <code>platform_lang.txt</code> cuando la plataforma detecta idioma. <code>GET /tradu/jobs/{id}/compare</code>: retorna resultado JSON + campo <code>report</code> listo para mostrar. 404 si falta cualquiera de los dos VTTs.</span></li>
+      </ul>
+
+      <div class="decision">
+        <strong>_normalize() elimina puntuación antes de comparar</strong>
+        <p>Los dos modelos de Whisper (local vs plataforma) producen puntuación distinta para el mismo audio. Sin normalización, diferencias tipográficas ("¿Hola?" vs "hola") inflan la divergencia. El veredicto se basa en el texto, no en el formateo.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T4.5.7 -->
+  <div class="task" onclick="this.classList.toggle('open')">
+    <div class="task-header">
+      <div class="task-id">T4.5.7</div>
+      <div class="task-meta">
+        <div class="task-title">Endurecer SSRF para producción: quitar <code style="font-size:0.85em;color:#fc8181;">ALLOW_HTTP_AUDIO</code> + 3 tests de cobertura</div>
+        <div class="task-desc">Runbook de postura SSRF. 3 tests nuevos que cubren: http:// bloqueado sin escape hatch, IP Tailscale bloqueada, y documenta el bypass (sirve de referencia). ALLOW_HTTP_AUDIO removido del env de ialab.</div>
+        <div class="task-chips">
+          <span class="chip chip-sec">Seguridad</span>
+          <span class="chip chip-devops">DevOps</span>
+          <span class="chip chip-time">2 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-15 · confirmado en ialab 2026-06-16</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> <code>ALLOW_HTTP_AUDIO=true</code> fue un escape hatch necesario en el e2e de F4 (hosts públicos de audio estaban caídos). Dejarlo en producción abriría el SSRF del worker para cualquier URL <code>http://</code>, incluyendo IPs internas del tailnet. El runbook documenta cómo removérselo y verificarlo.</p>
+
+      <div class="section-title">Archivos creados</div>
+      <ul class="file-list">
+        <li><span class="file-name">docs/RUNBOOKS/f4.5-ssrf-production-posture.md</span> <span class="file-new">NEW</span><span class="file-desc">— Postura SSRF en producción: estado actual (SSRF estricto), procedimiento para remover <code>ALLOW_HTTP_AUDIO</code> de ialab, verificación con curl post-cambio.</span></li>
+      </ul>
+
+      <div class="section-title">Archivos modificados</div>
+      <ul class="file-list">
+        <li><span class="file-name">workers/tests/test_downloader.py</span><span class="file-desc">— 3 tests añadidos: <code>test_ssrf_enforced_without_allow_http_audio</code>, <code>test_ssrf_enforced_tailscale_without_allow_http_audio</code>, <code>test_allow_http_audio_env_bypasses_ssrf</code> (documenta el bypass para referencia futura).</span></li>
+      </ul>
+
+      <div class="decision">
+        <strong>El código de downloader.py no cambió</strong>
+        <p>La lógica del escape hatch sigue existiendo en el código — es útil para futuros e2e locales donde no hay hosting público. Lo que cambió es el env file de producción, no el código. Los tres tests documentan el contrato de comportamiento para que no sea un cambio silencioso en el futuro.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T4.5.8 -->
+  <div class="task" onclick="this.classList.toggle('open')">
+    <div class="task-header">
+      <div class="task-id">T4.5.8</div>
+      <div class="task-meta">
+        <div class="task-title">Runbook de operación sin dashboard (queries SQL preparadas)</div>
+        <div class="task-desc">Operación completa de la plataforma vía psql mientras no existe F5. Diagnóstico de jobs, estado de workers/VRAM, cancelación (API y SQL fallback), re-encolar errores agotados.</div>
+        <div class="task-chips">
+          <span class="chip chip-doc">Documentación</span>
+          <span class="chip chip-devops">DevOps</span>
+          <span class="chip chip-time">2 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-15</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> F5 (dashboard) es la siguiente fase pero el sistema ya está en producción. Sin runbook, operar la plataforma requiere conocer el esquema de la DB de memoria. Este runbook es el manual de operaciones mientras no existe UI.</p>
+
+      <div class="section-title">Archivos creados</div>
+      <ul class="file-list">
+        <li><span class="file-name">docs/RUNBOOKS/f4.5-ops-without-dashboard.md</span> <span class="file-new">NEW</span><span class="file-desc">— Conexión a psql en el contenedor del VPS. Queries para listar jobs por estado, últimos 20 jobs, diagnóstico de job fallido (error, payload, worker asignado, logs, archivos). Jobs por <code>workflow_id</code> (correlacionar los dos jobs del modo <code>both</code> de Video Crack). Estado de workers y VRAM. Cancelar via API (recomendado) y via SQL (fallback). Re-encolar error agotado con <code>pg_notify</code>. Monitoreo rápido para la doble ejecución.</span></li>
+      </ul>
+
+      <div class="decision">
+        <strong>pg_notify al re-encolar via SQL</strong>
+        <p>La cancelación via API dispara el webhook y libera VRAM en jobs <code>running</code>; el UPDATE SQL directo no hace ninguna de las dos. Al re-encolar via SQL, <code>pg_notify('jobs_channel', job_id)</code> es necesario para que los workers descubran el nuevo pending sin esperar el siguiente poll — sin la notificación, el job puede esperar hasta 30s innecesariamente.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T4.5.9 -->
+  <div class="task open" onclick="this.classList.toggle('open')">
+    <div class="task-header">
+      <div class="task-id">T4.5.9</div>
+      <div class="task-meta">
+        <div class="task-title">Corrida de producción: corpus real + VRAM + recuperación mid-job</div>
+        <div class="task-desc">5 escenarios E2E contra hardware real. Corpus: 5 videos (2.2 min → 4.2 h). VRAM pico: 5060 MiB. Caos: requeue 54s, retoma &lt;10s. Todos PARIDAD_ACEPTABLE. ALLOW_HTTP_AUDIO removido en este run.</div>
+        <div class="task-chips">
+          <span class="chip chip-devops">DevOps</span>
+          <span class="chip chip-time">4 h · Hardware real</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 5/5 PASS · 2026-06-16</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> los tests unitarios del SDK y del comparador validan el contrato imaginado. Solo el hardware con Video Crack real corriendo en modo <code>both</code> valida el sistema completo: SSRF activo, audio endpoint público, corpus de producción, caos de infraestructura y comparación de calidad.</p>
+
+      <div class="section-title">Resultados del corpus (5/5 PARIDAD_ACEPTABLE)</div>
+      <table>
+        <tr><th>VC job</th><th>Duración</th><th>Platform job</th><th>Status</th><th>Similitud</th><th>Veredicto</th></tr>
+        <tr><td><code>932e5693</code></td><td>129s (2.2 min)</td><td><code>7039120e</code></td><td class="pass">done</td><td>95.7%</td><td class="pass">✅ PARIDAD_ACEPTABLE</td></tr>
+        <tr><td><code>071d840e</code></td><td>15042s (4.2 h)</td><td><code>244742f6</code></td><td class="pass">done</td><td>95.8%</td><td class="pass">✅ PARIDAD_ACEPTABLE</td></tr>
+        <tr><td><code>4eca1cb2</code></td><td>259s (4.3 min)</td><td><code>14661da0</code></td><td class="pass">done</td><td>97.2%</td><td class="pass">✅ PARIDAD_ACEPTABLE</td></tr>
+        <tr><td><code>3b9bc3f3</code></td><td>572s (9.5 min)</td><td><code>db9b4d8a</code></td><td class="pass">done</td><td>90.5%</td><td class="pass">✅ PARIDAD_ACEPTABLE</td></tr>
+        <tr><td><code>ac922ace</code></td><td>713s (11.9 min)</td><td><code>ac9d6bb8</code></td><td class="pass">done</td><td>97.3%</td><td class="pass">✅ PARIDAD_ACEPTABLE</td></tr>
+      </table>
+
+      <div class="section-title">5 escenarios E2E</div>
+      <table>
+        <tr><th>#</th><th>Escenario</th><th>Resultado</th><th>Detalle clave</th></tr>
+        <tr><td>0</td><td>Verificación SSRF (sin escape hatch)</td><td class="pass">✅ PASS</td><td>Job con <code>http://</code> → <code>error</code> con mensaje SSRF; agotó 3 reintentos</td></tr>
+        <tr><td>1</td><td>Smoke test audio corto (2.2 min)</td><td class="pass">✅ PASS</td><td>VTT descargable vía proxy; 95.7% similitud</td></tr>
+        <tr><td>2</td><td>Video más largo del catálogo (4.2 h)</td><td class="pass">✅ PASS</td><td>15042s, 3131 segmentos, 57k palabras; VRAM pico 5060 MiB</td></tr>
+        <tr><td>3</td><td>Corpus completo (5 videos)</td><td class="pass">✅ PASS</td><td>5/5 <code>done</code>; mínimo 90.5%; ningún REGRESION</td></tr>
+        <tr><td>4</td><td>Parar worker mid-job + recuperación</td><td class="pass">✅ PASS</td><td>Requeue <strong>54s</strong>; retoma <strong>&lt;10s</strong> tras restart; completa solo</td></tr>
+      </table>
+
+      <div class="section-title">Calibración VRAM (actualización desde F4)</div>
+      <table>
+        <tr><th>Métrica</th><th>F4 (T4.9)</th><th>F4.5 (este run)</th><th>Delta</th></tr>
+        <tr><td>VRAM pico medida</td><td>4667 MiB</td><td><strong>5060 MiB</strong></td><td>+393 MiB</td></tr>
+        <tr><td><code>MIN_VRAM_TRANSCRIPTION_MB</code></td><td>5500 MB</td><td>5500 MB</td><td>sin cambio</td></tr>
+        <tr><td>Margen sobre el pico</td><td>833 MB</td><td><strong>440 MB</strong></td><td>−393 MB</td></tr>
+      </table>
+
+      <div class="section-title">Archivos creados</div>
+      <ul class="file-list">
+        <li><span class="file-name">docs/RUNBOOKS/e2e-f4.5-results.md</span> <span class="file-new">NEW</span><span class="file-desc">— Checklist e2e: 5 escenarios, tabla del corpus, calibración VRAM, tabla de resultados con criterio de cierre.</span></li>
+      </ul>
+
+      <div class="bug">
+        <strong>Audio endpoint de Video Crack requirió reiniciar el backend</strong>
+        <p>El proceso de Video Crack arrancó antes de que T4.5.5 añadiera el endpoint <code>GET /tradu/jobs/{id}/audio</code>. El primer job de la corrida falló porque el worker no podía descargar el audio. Fue necesario reiniciar el backend de Video Crack para que el endpoint quedara activo.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T4.5.10 -->
+  <div class="task" onclick="this.classList.toggle('open')">
+    <div class="task-header">
+      <div class="task-id">T4.5.10</div>
+      <div class="task-meta">
+        <div class="task-title">Cierre de fase y documentación</div>
+        <div class="task-desc">PROJECT.md y CLAUDE.md actualizados al cerrar F4.5. Estado de producción documentado: SSRF estricto, app key activa, runbooks referenciados, VRAM pico actualizado.</div>
+        <div class="task-chips">
+          <span class="chip chip-doc">Documentación</span>
+          <span class="chip chip-time">1 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-16</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <div class="section-title">Archivos modificados</div>
+      <ul class="file-list">
+        <li><span class="file-name">PROJECT.md</span><span class="file-desc">— F4.5 marcada como completada (2026-06-16) con nota: 5/5 escenarios PASS, corpus 90.5–97.3% similitud, caos 54s, VRAM 5060 MiB. Próximos pasos actualizados a F5. Flag de Video Crack en <code>both</code> (sistema viejo activo — se apaga en F7).</span></li>
+        <li><span class="file-name">CLAUDE.md (proyecto)</span><span class="file-desc">— Sección "Fase activa" actualizada: F4.5 cerrada, F5 como siguiente, postura de producción resumida.</span></li>
+      </ul>
+
+      <div class="decision">
+        <strong>Flag de Video Crack queda en both hasta F7</strong>
+        <p>El sistema viejo de transcripción de Video Crack sigue activo como respaldo. El apagado definitivo es responsabilidad de F7, cuando TTS también esté migrado — no antes, para no perder el fallback si la plataforma tiene un incidente.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- RETROSPECTIVA -->
+  <h2>Retrospectiva — aprendizajes clave</h2>
+
+  <div class="retro-grid">
+    <div class="retro-card">
+      <h3 class="good">Lo que funcionó bien</h3>
+      <ul>
+        <li>SDK de 3 métodos + 1 dependencia: integración completa sin complejidad innecesaria</li>
+        <li>Flag de tres posiciones: <code>both</code> permite validar en producción sin riesgo para el usuario</li>
+        <li>comparar_transcripts.py: veredicto automático ahorró revisar 57k palabras a mano</li>
+        <li>Modo <code>both</code> fire-and-forget: errores de plataforma no bloquean el pipeline de Video Crack</li>
+        <li>Reuse del escape hatch SSRF: quitarlo del env de producción es un cambio operacional, no de código</li>
+      </ul>
+    </div>
+    <div class="retro-card">
+      <h3 class="lesson">Lo que aprendimos del sistema real</h3>
+      <ul>
+        <li>VRAM subió 393 MiB sobre F4: audio en inglés con contenido denso es más pesado</li>
+        <li>El margen de 440 MiB es ajustado — monitorear con audios futuros</li>
+        <li>Reiniciar el backend al desplegar nuevos endpoints es un paso que debe estar en el runbook</li>
+        <li>Similitud mínima del corpus: 90.5% con puntuación normalizada — un umbral de 85% es razonable</li>
+        <li>Requeue en 54s con heartbeat de 90s: el monitor tiene latencia real (hasta 30s adicionales sobre el timeout)</li>
+      </ul>
+    </div>
+    <div class="retro-card">
+      <h3 class="risk">Lo más difícil técnicamente</h3>
+      <ul>
+        <li>audio_url https:// público: Video Crack necesita exponer su audio hacia internet para que el worker lo descargue</li>
+        <li>Thread daemon fire-and-forget con errores silenciosos: encontrar el balance entre no bloquear y no perder contexto</li>
+        <li>wait() con backoff exponencial: tope en 30s para no dejar intervalos de polling demasiado largos en jobs lentos</li>
+        <li>Similitud de texto con modelos diferentes: los dos Whisper producen puntuación distinta para el mismo audio</li>
+      </ul>
+    </div>
+    <div class="retro-card">
+      <h3 class="risk">Postura de producción al cerrar F4.5</h3>
+      <ul>
+        <li><code>ALLOW_HTTP_AUDIO</code> removido de <code>~/.config/ai-platform/worker-whisper.env</code> en ialab</li>
+        <li>App key <code>video-crack</code> activa en DB del VPS</li>
+        <li>SSRF estricto verificado en producción (Escenario 0 del e2e)</li>
+        <li>VRAM pico calibrado: 5060 MiB (margen 440 MiB sobre MIN_VRAM=5500)</li>
+        <li>Runbook SQL para operar sin dashboard (<code>docs/RUNBOOKS/f4.5-ops-without-dashboard.md</code>)</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- SIGUIENTE FASE -->
+  <h2>Siguiente fase — F5: Dashboard mínimo</h2>
+
+  <div style="background:#1a1f2e;border:1px solid #2d3748;border-radius:10px;padding:1.4rem 1.6rem;margin-top:0.5rem;">
+    <p style="font-size:0.85rem;color:#a0aec0;margin-bottom:0.8rem;">Con F4.5 completada, Video Crack transcribe vía la plataforma en producción. El corpus de 5 videos muestra 90.5–97.3% de similitud. El sistema corre en modo <code>both</code> — el sistema viejo de transcripción sigue como respaldo hasta F7. La operación diaria depende del runbook SQL; F5 añadirá visibilidad.</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;font-size:0.82rem;margin-top:0.4rem;">
+      <div style="color:#a0aec0;">→ Dashboard mínimo: listar jobs, estado, logs</div>
+      <div style="color:#a0aec0;">→ Visibilidad de VRAM sin <code>nvidia-smi</code> manual</div>
+      <div style="color:#a0aec0;">→ Solapable con F6 (worker-ollama + traducción en Video Crack)</div>
+      <div style="color:#a0aec0;">→ Monitorear VRAM pico en audios futuros (margen 440 MiB ajustado)</div>
+      <div style="color:#a0aec0;">→ Añadir reinicio del backend al runbook de deploy de Video Crack</div>
+      <div style="color:#a0aec0;">→ F7: apagar sistema viejo de transcripción de Video Crack (<code>both</code> → <code>platform</code>)</div>
+    </div>
+  </div>
+
+</div>
+
+<div class="footer">
+  Generado el 2026-06-16 &mdash; AI Worker Platform feature/f4.5 &mdash; docs/HTML/f4.5-implementacion.html
+</div>
+
+<script>
+  document.querySelectorAll('.task-header').forEach(header => {
+    header.addEventListener('click', (e) => {
+      e.stopPropagation();
+      header.closest('.task').classList.toggle('open');
+    });
+  });
+  document.querySelectorAll('.task-body').forEach(body => {
+    body.addEventListener('click', (e) => e.stopPropagation());
+  });
+</script>
+
+</body>
+</html>

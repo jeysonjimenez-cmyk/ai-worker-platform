@@ -278,6 +278,187 @@ func Cancel(ctx context.Context, pool *pgxpool.Pool, p CancelParams) (string, er
 	return "cancelled", tx.Commit(ctx)
 }
 
+type RegisterFileParams struct {
+	JobID     string
+	WorkerID  string
+	Filename  string
+	Path      string
+	SizeBytes *int64
+}
+
+// RegisterFile inserts (or updates) a row in job_files, with fencing.
+// Returns false if the job is not running or not owned by workerID (→ 409).
+func RegisterFile(ctx context.Context, pool *pgxpool.Pool, p RegisterFileParams) (bool, error) {
+	var owner string
+	err := pool.QueryRow(ctx,
+		`SELECT worker_id FROM jobs WHERE id = $1 AND status = 'running'`, p.JobID,
+	).Scan(&owner)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("check job owner: %w", err)
+	}
+	if owner != p.WorkerID {
+		return false, nil
+	}
+
+	_, err = pool.Exec(ctx, `
+		INSERT INTO job_files (job_id, filename, path, size_bytes)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (job_id, filename) DO UPDATE SET path = EXCLUDED.path, size_bytes = EXCLUDED.size_bytes`,
+		p.JobID, p.Filename, p.Path, p.SizeBytes,
+	)
+	if err != nil {
+		return false, fmt.Errorf("register file: %w", err)
+	}
+	return true, nil
+}
+
+type LogEntry struct {
+	Level   string
+	Message string
+}
+
+// IngestLogs inserts log lines for a job, with fencing.
+// Returns false if the job is not running or not owned by workerID (→ 409).
+func IngestLogs(ctx context.Context, pool *pgxpool.Pool, jobID, workerID string, entries []LogEntry) (bool, error) {
+	var owner string
+	err := pool.QueryRow(ctx,
+		`SELECT worker_id FROM jobs WHERE id = $1 AND status = 'running'`, jobID,
+	).Scan(&owner)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("check job owner: %w", err)
+	}
+	if owner != workerID {
+		return false, nil
+	}
+
+	levels := make([]string, len(entries))
+	messages := make([]string, len(entries))
+	jobIDs := make([]string, len(entries))
+	for i, e := range entries {
+		jobIDs[i] = jobID
+		levels[i] = e.Level
+		if levels[i] == "" {
+			levels[i] = "info"
+		}
+		messages[i] = e.Message
+	}
+	_, err = pool.Exec(ctx, `
+		INSERT INTO job_logs (job_id, level, message)
+		SELECT unnest($1::text[]), unnest($2::text[]), unnest($3::text[])`,
+		jobIDs, levels, messages,
+	)
+	if err != nil {
+		return false, fmt.Errorf("insert logs: %w", err)
+	}
+	return true, nil
+}
+
+// GetJobApp returns the app that owns a job, or "" if the job does not exist.
+func GetJobApp(ctx context.Context, pool *pgxpool.Pool, jobID string) (string, error) {
+	var app string
+	err := pool.QueryRow(ctx, `SELECT app FROM jobs WHERE id = $1`, jobID).Scan(&app)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("get job app: %w", err)
+	}
+	return app, nil
+}
+
+// FailTimedOutJobs transitions running jobs that exceed their service's max duration.
+// Releases VRAM and either schedules a retry or marks the job as error (same logic as Complete).
+// Returns the IDs of jobs that were transitioned.
+func FailTimedOutJobs(ctx context.Context, pool *pgxpool.Pool, maxDurations map[string]time.Duration) ([]string, error) {
+	var all []string
+	for service, maxDur := range maxDurations {
+		ids, err := failTimedOutJobsForService(ctx, pool, service, maxDur)
+		if err != nil {
+			return all, err
+		}
+		all = append(all, ids...)
+	}
+	return all, nil
+}
+
+func failTimedOutJobsForService(ctx context.Context, pool *pgxpool.Pool, service string, maxDur time.Duration) ([]string, error) {
+	cutoff := time.Now().Add(-maxDur)
+
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	rows, err := tx.Query(ctx, `
+		SELECT id, retry_count, max_retries FROM jobs
+		WHERE service = $1 AND status = 'running' AND started_at < $2
+		FOR UPDATE SKIP LOCKED`,
+		service, cutoff,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query timed-out jobs for %s: %w", service, err)
+	}
+
+	type jobRow struct {
+		id         string
+		retryCount int
+		maxRetries int
+	}
+	var found []jobRow
+	for rows.Next() {
+		var r jobRow
+		if err := rows.Scan(&r.id, &r.retryCount, &r.maxRetries); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		found = append(found, r)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(found) == 0 {
+		return nil, nil
+	}
+
+	var ids []string
+	for _, r := range found {
+		if err := ReleaseVRAMReservation(ctx, tx, r.id); err != nil {
+			return nil, fmt.Errorf("release vram for job %s: %w", r.id, err)
+		}
+		if shouldRetry(r.retryCount, r.maxRetries) {
+			retryAfter := time.Now().Add(nextRetryDelay(r.retryCount))
+			_, err = tx.Exec(ctx, `
+				UPDATE jobs
+				SET status = 'pending', worker_id = NULL, started_at = NULL,
+				    retry_count = retry_count + 1, retry_after = $1,
+				    error_msg = 'max job duration exceeded'
+				WHERE id = $2`,
+				retryAfter, r.id,
+			)
+		} else {
+			_, err = tx.Exec(ctx, `
+				UPDATE jobs
+				SET status = 'error', completed_at = now(),
+				    error_msg = 'max job duration exceeded'
+				WHERE id = $1`, r.id,
+			)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("update timed-out job %s: %w", r.id, err)
+		}
+		ids = append(ids, r.id)
+	}
+	return ids, tx.Commit(ctx)
+}
+
 // RequeueTimedOutJob moves a running job back to pending and releases VRAM.
 // Called by the heartbeat monitor.
 func RequeueTimedOutJob(ctx context.Context, tx pgx.Tx, jobID string) error {

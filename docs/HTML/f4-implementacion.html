@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fase 4 — worker-whisper + archivos: Qué se implementó</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f1117; color: #e2e8f0; line-height: 1.6; }
+
+    /* HEADER */
+    .header { background: linear-gradient(135deg, #1a1f2e 0%, #0f1117 100%); border-bottom: 1px solid #2d3748; padding: 2.5rem 3rem; }
+    .header h1 { font-size: 1.7rem; font-weight: 800; color: #f7fafc; letter-spacing: -0.02em; }
+    .header .subtitle { font-size: 0.95rem; color: #718096; margin-top: 0.3rem; }
+    .badges { display: flex; gap: 0.5rem; margin-top: 0.9rem; flex-wrap: wrap; }
+    .badge { display: inline-block; padding: 0.2rem 0.7rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
+    .badge-green { background: #1a4731; color: #68d391; border: 1px solid #276749; }
+    .badge-blue { background: #1a2744; color: #63b3ed; border: 1px solid #2b4c8c; }
+    .badge-purple { background: #2d1f4e; color: #b794f4; border: 1px solid #553c9a; }
+    .badge-orange { background: #3d2200; color: #f6ad55; border: 1px solid #7b4d00; }
+    .badge-teal { background: #1a3535; color: #4fd1c5; border: 1px solid #2c6060; }
+
+    /* LAYOUT */
+    .container { max-width: 980px; margin: 0 auto; padding: 2rem 3rem 4rem; }
+
+    /* RESUMEN GRID */
+    .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin: 2rem 0; }
+    .card { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 10px; padding: 1.2rem 1.4rem; }
+    .card .label { font-size: 0.72rem; color: #718096; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.4rem; }
+    .card .value { font-size: 1.6rem; font-weight: 800; color: #68d391; }
+    .card .sub { font-size: 0.78rem; color: #a0aec0; margin-top: 0.15rem; }
+
+    /* ARQUITECTURA */
+    .arch-diagram { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 10px; padding: 1.5rem 2rem; margin: 1.5rem 0; font-family: 'Fira Code', monospace; font-size: 0.82rem; line-height: 1.8; color: #a0aec0; }
+    .arch-diagram .hl { color: #68d391; font-weight: 600; }
+    .arch-diagram .hl2 { color: #63b3ed; font-weight: 600; }
+    .arch-diagram .hl3 { color: #b794f4; font-weight: 600; }
+    .arch-diagram .dim { color: #4a5568; }
+
+    /* TASK CARDS */
+    h2 { font-size: 1rem; font-weight: 700; color: #a0aec0; margin: 2.5rem 0 1rem; text-transform: uppercase; letter-spacing: 0.08em; padding-bottom: 0.4rem; border-bottom: 1px solid #2d3748; }
+
+    .task { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 10px; margin-bottom: 1.2rem; overflow: hidden; }
+    .task-header { display: flex; align-items: flex-start; gap: 1rem; padding: 1.1rem 1.4rem; cursor: pointer; user-select: none; }
+    .task-header:hover { background: #1e2535; }
+    .task-id { font-size: 0.72rem; font-weight: 700; color: #4a5568; font-family: monospace; white-space: nowrap; padding-top: 0.1rem; }
+    .task-meta { flex: 1; }
+    .task-title { font-size: 0.95rem; font-weight: 700; color: #f7fafc; }
+    .task-desc { font-size: 0.82rem; color: #718096; margin-top: 0.2rem; }
+    .task-chips { display: flex; gap: 0.4rem; margin-top: 0.5rem; flex-wrap: wrap; }
+    .chip { font-size: 0.7rem; padding: 0.15rem 0.55rem; border-radius: 4px; font-weight: 500; }
+    .chip-dev { background: #1a2744; color: #63b3ed; }
+    .chip-infra { background: #2d1f4e; color: #b794f4; }
+    .chip-devops { background: #3d2200; color: #f6ad55; }
+    .chip-doc { background: #1a3a2a; color: #68d391; }
+    .chip-sec { background: #3d1a1a; color: #fc8181; }
+    .chip-time { background: #161b27; color: #718096; border: 1px solid #2d3748; }
+    .task-status { font-size: 0.75rem; color: #68d391; font-weight: 700; white-space: nowrap; padding-top: 0.1rem; }
+    .task-toggle { font-size: 0.75rem; color: #4a5568; margin-left: 0.5rem; padding-top: 0.1rem; transition: transform 0.2s; }
+    .task.open .task-toggle { transform: rotate(180deg); }
+
+    .task-body { padding: 0 1.4rem 1.2rem; border-top: 1px solid #1e2535; display: none; }
+    .task.open .task-body { display: block; }
+    .task-body p { font-size: 0.85rem; color: #a0aec0; margin: 1rem 0 0.6rem; }
+    .task-body p strong { color: #e2e8f0; }
+
+    /* SECTIONS WITHIN TASK */
+    .section { margin-bottom: 1rem; }
+    .section-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; color: #4a5568; margin-bottom: 0.5rem; margin-top: 0.8rem; }
+
+    /* FILES */
+    .file-list { list-style: none; }
+    .file-list li { display: flex; align-items: flex-start; gap: 0.6rem; padding: 0.4rem 0; border-bottom: 1px solid #161b27; font-size: 0.82rem; }
+    .file-list li:last-child { border-bottom: none; }
+    .file-name { font-family: monospace; color: #63b3ed; white-space: nowrap; flex-shrink: 0; }
+    .file-desc { color: #a0aec0; }
+    .file-new { font-size: 0.65rem; font-weight: 700; color: #68d391; background: #1a3a2a; border: 1px solid #276749; padding: 0.05rem 0.35rem; border-radius: 3px; margin-left: 0.3rem; flex-shrink: 0; }
+
+    /* TESTS */
+    .test-list { list-style: none; }
+    .test-list li { display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.3rem 0; font-size: 0.82rem; color: #a0aec0; }
+    .test-list li::before { content: '✓'; color: #68d391; font-weight: 700; flex-shrink: 0; margin-top: 0.05rem; }
+
+    /* DECISIONS */
+    .decision { background: #161b27; border-left: 3px solid #4299e1; border-radius: 0 6px 6px 0; padding: 0.65rem 1rem; margin: 0.4rem 0; font-size: 0.82rem; }
+    .decision strong { color: #63b3ed; display: block; margin-bottom: 0.15rem; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.03em; }
+    .decision p { color: #a0aec0; margin: 0; }
+
+    /* DEBT */
+    .debt { background: #2d1800; border-left: 3px solid #f6ad55; border-radius: 0 6px 6px 0; padding: 0.65rem 1rem; margin: 0.4rem 0; font-size: 0.82rem; color: #fbd38d; }
+
+    /* BUG FOUND IN E2E */
+    .bug { background: #2d1a1a; border-left: 3px solid #fc8181; border-radius: 0 6px 6px 0; padding: 0.65rem 1rem; margin: 0.4rem 0; font-size: 0.82rem; }
+    .bug strong { color: #fc8181; display: block; margin-bottom: 0.15rem; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.03em; }
+    .bug p { color: #fbd38d; margin: 0; }
+
+    /* TABLE */
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin: 0.5rem 0; }
+    th { background: #161b27; color: #718096; padding: 0.45rem 0.8rem; text-align: left; font-weight: 600; border-bottom: 1px solid #2d3748; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    td { padding: 0.45rem 0.8rem; border-bottom: 1px solid #161b27; color: #e2e8f0; vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+    td code { font-family: monospace; background: #161b27; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.78rem; color: #63b3ed; }
+    .pass { color: #68d391; font-weight: 600; }
+    .task-row td:first-child { font-family: monospace; color: #718096; white-space: nowrap; }
+    .task-row td:last-child { color: #a0aec0; }
+
+    /* RETRO SECTION */
+    .retro-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
+    .retro-card { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 8px; padding: 1.1rem 1.3rem; }
+    .retro-card h3 { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.6rem; }
+    .retro-card h3.good { color: #68d391; }
+    .retro-card h3.risk { color: #f6ad55; }
+    .retro-card h3.lesson { color: #b794f4; }
+    .retro-card ul { list-style: none; }
+    .retro-card ul li { font-size: 0.82rem; color: #a0aec0; padding: 0.25rem 0; border-bottom: 1px solid #1e2535; }
+    .retro-card ul li:last-child { border-bottom: none; }
+    .retro-card ul li::before { content: '→ '; color: #4a5568; }
+
+    /* FOOTER */
+    .footer { text-align: center; padding: 2rem; font-size: 0.75rem; color: #4a5568; border-top: 1px solid #1a1f2e; margin-top: 3rem; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Fase 4 — worker-whisper + archivos (primer valor real)</h1>
+  <div class="subtitle">Implementación completa · AI Worker Platform · feature/f4</div>
+  <div class="badges">
+    <span class="badge badge-green">✅ Completada 2026-06-15</span>
+    <span class="badge badge-blue">11 tareas</span>
+    <span class="badge badge-purple">~36 h estimadas</span>
+    <span class="badge badge-orange">Python + faster-whisper + CUDA + Go</span>
+    <span class="badge badge-teal">6/6 E2E PASS</span>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- RESUMEN NUMÉRICO -->
+  <div class="summary-grid">
+    <div class="card">
+      <div class="label">Archivos nuevos</div>
+      <div class="value">9</div>
+      <div class="sub">worker-whisper, downloader, Dockerfile CUDA, runbook</div>
+    </div>
+    <div class="card">
+      <div class="label">Tests añadidos</div>
+      <div class="value">50+</div>
+      <div class="sub">SSRF + scaffold + whisper + API Go</div>
+    </div>
+    <div class="card">
+      <div class="label">Escenarios E2E</div>
+      <div class="value">6/6</div>
+      <div class="sub">audio real de 4.2 h · hardware</div>
+    </div>
+    <div class="card">
+      <div class="label">Defectos en e2e</div>
+      <div class="value">5</div>
+      <div class="sub">todos de integración, 0 de código</div>
+    </div>
+  </div>
+
+  <!-- ARQUITECTURA -->
+  <h2>Qué hace el sistema después de F4</h2>
+
+  <div class="arch-diagram">
+    <span class="dim">┌──────────────────────── VPS 100.106.192.45 ─────────────────────────┐</span><br>
+    │  <span class="hl">API Go</span>                                                               │<br>
+    │  ├─ POST /ai/jobs  (<span class="hl2">service: transcription</span>, audio_url)              │<br>
+    │  ├─ <span class="hl2">POST /ai/jobs/{id}/files</span>  (registro en job_files + fencing)     │<br>
+    │  ├─ <span class="hl3">GET /ai/jobs/{id}/files/{filename}</span>  (proxy streaming → 503)     │<br>
+    │  ├─ ledger VRAM: <span class="hl2">MIN_VRAM_TRANSCRIPTION_MB</span> · <span class="hl2">VRAM_MARGIN_MB</span>        │<br>
+    │  └─ monitor: heartbeat 90s + <span class="hl3">timeout por job por service</span>           │<br>
+    │  <span class="hl">PostgreSQL</span> — job_files · jobs · workers · gpus · worker_metrics      │<br>
+    <span class="dim">└──────────────────────────────────────────────────────────────────────┘</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">│  Tailscale  (network privada)</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">↓</span><br>
+    <span class="dim">┌──────────────────────── ialab 100.103.55.110 ───────────────────────┐</span><br>
+    │  <span class="hl">worker-whisper</span> (Docker · runtime: nvidia · concurrency 1)            │<br>
+    │  ├─ <span class="hl2">download()</span>: SSRF (solo https, bloquea RFC1918 + 100.64/10)        │<br>
+    │  ├─ <span class="hl3">faster-whisper large-v2</span>: carga lazy + descarga idle (10 min)    │<br>
+    │  ├─ progreso real por segmento → VTT/SRT/JSON en files/{job_id}/    │<br>
+    │  └─ unload-model → libera reserva del ledger en el VPS             │<br>
+    │  <span class="hl">file-server</span> :8001  (bind <span class="hl2">100.103.55.110</span>, sirve files/{job_id}/)   │<br>
+    │  <span class="hl">Node Agent</span> (systemd) + <span class="hl">worker-echo</span> (Docker) — de F2/F3          │<br>
+    <span class="dim">└──────────────────────────────────────────────────────────────────────┘</span>
+  </div>
+
+  <!-- TAREAS -->
+  <h2>Tareas implementadas <span style="font-size:0.75rem;color:#4a5568;font-weight:400;text-transform:none;letter-spacing:0;">(click para expandir)</span></h2>
+
+  <!-- T4.1 -->
+  <div class="task open" onclick="this.classList.toggle('open')">
+    <div class="task-header">
+      <div class="task-id">T4.1</div>
+      <div class="task-meta">
+        <div class="task-title">Esqueleto de <code style="font-size:0.85em;color:#63b3ed;">worker-whisper</code> sobre el scaffold (CUDA, concurrency 1)</div>
+        <div class="task-desc">Paquete worker_whisper/ con execute() stub sobre worker_base. Dockerfile base CUDA. Entrada en el Compose de ialab con runtime: nvidia. Valida claim→execute→complete sin cargar el modelo.</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo</span>
+          <span class="chip chip-time">4 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-13</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> antes de colgar la transcripción real (cara y dependiente de GPU), se valida que el worker se registra con <code>service: transcription</code> y completa el ciclo claim→execute→complete sobre el scaffold de F3. El <code>execute()</code> inicial es un stub.</p>
+
+      <div class="section-title">Archivos creados</div>
+      <ul class="file-list">
+        <li><span class="file-name">workers/worker_whisper/__init__.py</span> <span class="file-new">NEW</span><span class="file-desc">— <code>execute()</code> stub (log + progress 50 % + result stub)</span></li>
+        <li><span class="file-name">workers/worker_whisper/__main__.py</span> <span class="file-new">NEW</span><span class="file-desc">— entrypoint <code>python -m worker_whisper</code></span></li>
+        <li><span class="file-name">workers/Dockerfile.whisper</span> <span class="file-new">NEW</span><span class="file-desc">— base <code>nvidia/cuda:12.1.0-cudnn8-runtime-ubuntu22.04</code> + Python 3.12 (deadsnakes) + uv 0.7.12; deps de <code>uv.lock</code></span></li>
+        <li><span class="file-name">deploy/ialab/worker-whisper.env.example</span> <span class="file-new">NEW</span><span class="file-desc">— plantilla con <code>WORKER_CAPABILITIES</code> = <code>services:["transcription"], cuda:true, vram_total_mb</code></span></li>
+      </ul>
+
+      <div class="section-title">Archivos modificados</div>
+      <ul class="file-list">
+        <li><span class="file-name">workers/pyproject.toml</span><span class="file-desc">— entry point <code>worker-whisper = "worker_whisper:main"</code></span></li>
+        <li><span class="file-name">deploy/ialab/docker-compose.yml</span><span class="file-desc">— servicio <code>worker-whisper</code> con <code>runtime: nvidia</code> (GPU device reservation)</span></li>
+      </ul>
+
+      <div class="decision">
+        <strong>Stub primero, modelo después</strong>
+        <p>El <code>execute()</code> stub valida el ciclo completo del worker sin pagar el costo de cargar un modelo de 10 GB. La transcripción real se cuelga en T4.4 sobre esta base ya probada. <code>vram_total_mb</code> (24564) es placeholder hasta calibrarlo en T4.9.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T4.2 -->
+  <div class="task" onclick="this.classList.toggle('open')">
+    <div class="task-header">
+      <div class="task-id">T4.2</div>
+      <div class="task-meta">
+        <div class="task-title">Descarga de <code style="font-size:0.85em;color:#63b3ed;">audio_url</code> con validación SSRF + límite de tamaño</div>
+        <div class="task-desc">download(url, dest, max_bytes) con la misma política SSRF de F1: solo https, bloqueo de RFC 1918, loopback, link-local y Tailscale 100.64/10. Aborta si excede el límite.</div>
+        <div class="task-chips">
+          <span class="chip chip-sec">Seguridad</span>
+          <span class="chip chip-time">3 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-13</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> el worker descarga un <code>audio_url</code> que viene del payload de un cliente. Sin validación, un atacante podría apuntar a IPs internas del tailnet o a metadata endpoints (SSRF). Se replica la política del paquete <code>ssrf</code> de Go (F1), ahora en Python para el lado worker.</p>
+
+      <div class="section-title">Archivos creados</div>
+      <ul class="file-list">
+        <li><span class="file-name">workers/worker_whisper/downloader.py</span> <span class="file-new">NEW</span><span class="file-desc">— <code>download()</code> con <code>_validate_ssrf()</code>: bloquea <code>http://</code>, RFC 1918, loopback, link-local, Tailscale <code>100.64.0.0/10</code>; aborta si <code>Content-Length</code> o bytes descargados &gt; <code>max_bytes</code> (default 2 GB)</span></li>
+        <li><span class="file-name">workers/tests/test_downloader.py</span> <span class="file-new">NEW</span><span class="file-desc">— 14 tests: todos los rangos bloqueados, esquemas inválidos, DNS failure, límite por <code>Content-Length</code> y por stream, descarga OK, SSRF bloqueado antes del HTTP</span></li>
+      </ul>
+
+      <div class="decision">
+        <strong>DNS resuelto antes de descargar (late-binding SSRF)</strong>
+        <p>La validación resuelve el DNS antes de iniciar la descarga, no confía en el hostname. Sin esto, un dominio que resuelve a una IP pública en la validación y a una privada en la descarga (DNS rebinding) burlaría el control.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T4.3 -->
+  <div class="task" onclick="this.classList.toggle('open')">
+    <div class="task-header">
+      <div class="task-id">T4.3</div>
+      <div class="task-meta">
+        <div class="task-title">Endpoint de registro en <code style="font-size:0.85em;color:#63b3ed;">job_files</code> + helper <code style="font-size:0.85em;color:#63b3ed;">upload_file_metadata()</code></div>
+        <div class="task-desc">POST /ai/jobs/{id}/files con worker key y fencing. Upsert idempotente. Helper en el scaffold (deferido de F3). Solo metadata, no contenido.</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo · API Go + Python</span>
+          <span class="chip chip-time">3 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-13</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> whisper produce 3 archivos por job (VTT/SRT/JSON). El servidor de archivos (T4.6) y el proxy (T4.7) necesitan saber qué archivos existen. La tabla <code>job_files</code> existe desde F1 pero no tenía endpoint de escritura — el helper quedó deferido de F3.</p>
+
+      <div class="section-title">API Go</div>
+      <ul class="file-list">
+        <li><span class="file-name">api/internal/jobs/store.go</span><span class="file-desc">— <code>RegisterFileParams</code> + <code>RegisterFile()</code>: fencing (<code>WHERE worker_id = $reporter AND status = 'running'</code>), upsert (<code>ON CONFLICT DO UPDATE</code>) para idempotencia</span></li>
+        <li><span class="file-name">api/internal/jobs/handler.go</span><span class="file-desc">— handler <code>RegisterFile</code>: valida <code>filename</code> y <code>path</code> requeridos (422), fencing (409), responde 201</span></li>
+        <li><span class="file-name">api/main.go</span><span class="file-desc">— registra <code>POST /ai/jobs/{id}/files</code> con <code>workerMW</code></span></li>
+      </ul>
+
+      <div class="section-title">Scaffold Python</div>
+      <ul class="file-list">
+        <li><span class="file-name">workers/worker_base/api_client.py</span><span class="file-desc">— <code>upload_file_metadata(job_id, filename, path, size_bytes)</code></span></li>
+        <li><span class="file-name">workers/worker_base/scaffold.py</span><span class="file-desc">— <code>ctx.upload_file_metadata()</code> en <code>JobContext</code>: maneja 409 y errores de red igual que <code>log()</code> y <code>report_progress()</code> (descarta + warning, no excepción)</span></li>
+      </ul>
+
+      <div class="section-title">Tests de integración (PostgreSQL real — testcontainers)</div>
+      <ul class="test-list">
+        <li><code>TestRegisterFile_Valid</code>: inserta fila y verifica en DB</li>
+        <li><code>TestRegisterFile_Upsert</code>: misma filename dos veces → 1 sola fila, sin error</li>
+        <li><code>TestRegisterFile_Fencing_WrongWorker</code> → 409</li>
+        <li><code>TestRegisterFile_MissingWorkerKey</code> → 401</li>
+        <li><code>TestRegisterFile_InvalidPayload</code> → 422 · + 3 tests del scaffold (201, 409, error de red)</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- T4.4 -->
+  <div class="task open" onclick="this.classList.toggle('open')">
+    <div class="task-header">
+      <div class="task-id">T4.4</div>
+      <div class="task-meta">
+        <div class="task-title">Transcripción real con progreso por segmentos + salida VTT/SRT/JSON</div>
+        <div class="task-desc">execute() real con faster-whisper: descarga, transcribe, reporta progreso real (5 %→95 % por seg.end/duración→100 %), escribe VTT/SRT/JSON en files/{job_id}/ y registra los 3 archivos.</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo</span>
+          <span class="chip chip-time">4 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-15</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> es el primer valor real de la plataforma — transcripción de audio end-to-end, el servicio principal de Video Crack. El progreso debe ser fiel (no saltar de 0 a 100) porque un job puede durar media hora y el cliente necesita ver avance.</p>
+
+      <div class="section-title">Implementación</div>
+      <ul class="file-list">
+        <li><span class="file-name">workers/worker_whisper/__init__.py</span><span class="file-desc">— <code>execute()</code> real: descarga con <code>download()</code> → <code>WhisperModel</code> (lazy import) → itera el generador de segmentos reportando progreso real (<code>5 %</code> tras descarga → <code>seg.end / total_duration</code> hasta 95 % → 100 % al cerrar) → escribe VTT/SRT/JSON → registra los 3 con <code>ctx.upload_file_metadata()</code> → borra el audio del disco. Helpers <code>_write_vtt</code>, <code>_write_srt</code>, <code>_write_json</code>, <code>_fmt_ts</code></span></li>
+        <li><span class="file-name">workers/pyproject.toml</span><span class="file-desc">— dependencia <code>faster-whisper</code></span></li>
+        <li><span class="file-name">workers/uv.lock</span><span class="file-desc">— <code>faster-whisper==1.2.1</code> + 21 deps transitivas (<code>ctranslate2</code>, <code>av</code>, <code>onnxruntime</code>, <code>numpy</code>, <code>huggingface-hub</code>…)</span></li>
+        <li><span class="file-name">workers/tests/test_whisper_execute.py</span> <span class="file-new">NEW</span><span class="file-desc">— 8 tests sin GPU (faster-whisper stubado vía <code>sys.modules</code>): los 3 archivos, progreso monótono 5→100, 3 registros, SSRF/tamaño propagan <code>ValueError</code>, formato de cada salida</span></li>
+      </ul>
+
+      <div class="section-title">Configuración por env vars</div>
+      <table>
+        <tr><th>Variable</th><th>Default</th><th>Descripción</th></tr>
+        <tr><td><code>WORKER_FILES_DIR</code></td><td><code>/app/files</code></td><td>Raíz de los archivos de salida</td></tr>
+        <tr><td><code>WHISPER_MODEL</code></td><td><code>large-v2</code></td><td>Modelo faster-whisper</td></tr>
+        <tr><td><code>WHISPER_DEVICE</code></td><td><code>cuda</code></td><td>Dispositivo de inferencia</td></tr>
+        <tr><td><code>WHISPER_COMPUTE_TYPE</code></td><td><code>float16</code></td><td>Tipo de cómputo del modelo</td></tr>
+      </table>
+
+      <div class="decision">
+        <strong>Import de WhisperModel lazy (dentro de execute())</strong>
+        <p>El módulo arranca sin CUDA disponible; la carga real del modelo ocurre al primer job. Esto permite testear <code>execute()</code> sin GPU (stub vía <code>sys.modules</code>) y es la base sobre la que T4.5 monta el caché del modelo y la descarga por inactividad.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T4.5 -->
+  <div class="task" onclick="this.classList.toggle('open')">
+    <div class="task-header">
+      <div class="task-id">T4.5</div>
+      <div class="task-meta">
+        <div class="task-title">Gestión de modelo: carga lazy + descarga por inactividad</div>
+        <div class="task-desc">El modelo se carga al primer job y se descarga tras 10 min de inactividad, llamando POST /workers/{id}/unload-model para liberar la reserva del ledger (endpoint de F1, reutilizado).</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo</span>
+          <span class="chip chip-time">3 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-15</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> un modelo de ~5 GB en VRAM bloquea esa memoria para otros workers (relevante para la convivencia de F6). Si nadie usa whisper, su VRAM debe liberarse sin intervención y volver a cargarse sola al siguiente job.</p>
+
+      <div class="section-title">Implementación</div>
+      <ul class="file-list">
+        <li><span class="file-name">workers/worker_whisper/__init__.py</span><span class="file-desc">— model manager: globals <code>_model</code>, <code>_model_lock</code>, <code>_active_jobs</code>, <code>_last_released</code>; <code>_acquire_model()</code> (carga lazy + contador), <code>_release_model()</code> (decrementa + resetea idle clock), <code>_idle_watcher()</code> (daemon thread cada 60s; descarga si <code>_active_jobs == 0</code> y pasó ≥<code>_IDLE_TIMEOUT</code>). <code>execute()</code> en <code>try/finally</code> para garantizar <code>_release_model()</code></span></li>
+        <li><span class="file-name">workers/worker_base/api_client.py</span><span class="file-desc">— <code>unload_model(worker_id)</code>: <code>POST /workers/{id}/unload-model</code> con <code>X-Worker-Key</code></span></li>
+        <li><span class="file-name">workers/tests/test_whisper_execute.py</span><span class="file-desc">— fixture autouse <code>_reset_model_state</code> + 10 tests nuevos: carga, reuso, contador, release en éxito/error, recarga tras unload, watcher con/sin job activo y antes/después del timeout</span></li>
+      </ul>
+
+      <div class="section-title">Configuración por env vars</div>
+      <table>
+        <tr><th>Variable</th><th>Default</th><th>Descripción</th></tr>
+        <tr><td><code>WHISPER_IDLE_TIMEOUT</code></td><td><code>600</code></td><td>Segundos de inactividad antes de descargar el modelo</td></tr>
+      </table>
+
+      <div class="decision">
+        <strong>El lock se mantiene durante la llamada a unload-model (anti-TOCTOU)</strong>
+        <p>Sin el lock, un nuevo job podría cargar el modelo entre el momento en que el watcher decide descargar y la notificación al ledger, dejando el ledger con VRAM = 0 mientras el modelo está realmente cargado. El lock cierra esa carrera.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T4.6 -->
+  <div class="task" onclick="this.classList.toggle('open')">
+    <div class="task-header">
+      <div class="task-id">T4.6</div>
+      <div class="task-meta">
+        <div class="task-title">Servidor de archivos en ialab (bind a IP Tailscale)</div>
+        <div class="task-desc">Servidor HTTP en ialab que sirve files/{job_id}/. Bind explícito a 100.103.55.110 (nunca 127.0.0.1 ni 0.0.0.0) — lección recurrente de F2/F3. Solo alcanzable desde el VPS por el tailnet.</div>
+        <div class="task-chips">
+          <span class="chip chip-infra">Infraestructura</span>
+          <span class="chip chip-time">3 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-15</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> los archivos viven en ialab; el VPS necesita servirlos a las apps sin que ialab sea alcanzable directamente. La regla "los servicios cross-node se ligan a la IP Tailscale, no a loopback" se rompió en F2 y F3 — aquí se exige como criterio de aceptación, no como hygiene aparte.</p>
+
+      <div class="section-title">Implementación</div>
+      <ul class="file-list">
+        <li><span class="file-name">deploy/ialab/docker-compose.yml</span><span class="file-desc">— volumen nombrado <code>files_data</code> (compartido entre <code>worker-whisper</code> y <code>file-server</code>); nuevo servicio <code>file-server</code> (<code>python:3.12-slim</code>, <code>http.server 8001 --bind 100.103.55.110 --directory /data</code>, <code>files_data:/data/files</code>, <code>network_mode: host</code>)</span></li>
+      </ul>
+
+      <div class="decision">
+        <strong>URL de archivos: <code>http://100.103.55.110:8001/files/{job_id}/{filename}</code></strong>
+        <p>La estructura <code>/files/</code> en la URL surge de montar el volumen en <code>/data/files</code> y servir desde <code>/data</code>. <code>SimpleHTTPRequestHandler</code> normaliza paths con <code>os.path.normpath()</code>, previniendo traversal básico; el proxy de T4.7 añade validación de filename en su capa.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T4.7 -->
+  <div class="task" onclick="this.classList.toggle('open')">
+    <div class="task-header">
+      <div class="task-id">T4.7</div>
+      <div class="task-meta">
+        <div class="task-title">Proxy de archivos en la API Go (streaming + 503)</div>
+        <div class="task-desc">GET /ai/jobs/{id}/files/{filename}: proxy streaming al file server de ialab con io.Copy (sin bufferizar). 503 claro si ialab está offline. Auth de app + fencing + validación de filename.</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo · API Go</span>
+          <span class="chip chip-time">4 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-15</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> una app descarga los resultados de un job sin conocer ni alcanzar ialab. Los archivos pueden ser grandes (VTT/JSON de 4 h de audio), así que el proxy hace streaming sin cargar el archivo entero en memoria del VPS; si ialab está caído, degrada con 503 claro en vez de 500 genérico o timeout colgado.</p>
+
+      <div class="section-title">Implementación</div>
+      <ul class="file-list">
+        <li><span class="file-name">api/internal/config/config.go</span><span class="file-desc">— campo <code>FileServerURL</code> (<code>FILE_SERVER_URL</code>) + <code>VRAMMarginMB</code> configurable vía <code>VRAM_MARGIN_MB</code> (también para T4.9)</span></li>
+        <li><span class="file-name">api/internal/jobs/handler.go</span><span class="file-desc">— <code>GetFile</code>: valida filename (rechaza <code>..</code> y <code>/\</code> como defensa en profundidad), verifica propiedad del app (fencing), proxy streaming con <code>io.Copy</code>, 503 si el file server no responde</span></li>
+        <li><span class="file-name">api/internal/jobs/store.go</span><span class="file-desc">— <code>GetJobApp()</code> para verificar la propiedad del app</span></li>
+        <li><span class="file-name">api/main.go</span><span class="file-desc">— registra <code>GET /ai/jobs/{id}/files/{filename}</code> con <code>appMW</code></span></li>
+      </ul>
+
+      <div class="section-title">Tests de integración</div>
+      <ul class="test-list">
+        <li><code>TestGetFile_FileServerDown_503</code>: listener cerrado → 503</li>
+        <li><code>TestGetFile_Success_Proxy</code>: <code>httptest.Server</code> → 200 + body correcto</li>
+        <li><code>TestGetFile_WrongApp_404</code>: job de otro app → 404</li>
+        <li><code>TestGetFile_NoAuth_401</code> · <code>TestGetFile_NotConfigured_503</code> (FILE_SERVER_URL vacío)</li>
+      </ul>
+
+      <div class="decision">
+        <strong>Path traversal cubierto por el router de Go 1.22</strong>
+        <p><code>{filename}</code> es un único segmento de path para el router, así que el traversal vía <code>/</code> ya está prevenido. La validación <code>strings.Contains("..")</code> en el handler es defensa en profundidad, no la única barrera.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T4.8 -->
+  <div class="task" onclick="this.classList.toggle('open')">
+    <div class="task-header">
+      <div class="task-id">T4.8</div>
+      <div class="task-meta">
+        <div class="task-title">Timeout máximo por job, configurable por service</div>
+        <div class="task-desc">Timeout de ejecución por job, configurable por service (transcription: 4h, llm_chat: 30m...). Un job running que lo excede libera VRAM y reintenta/marca error. Distinto del heartbeat (90s).</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo · API Go</span>
+          <span class="chip chip-time">3 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-15</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> un job atascado (modelo colgado, bug de inferencia) no debe consumir VRAM indefinidamente. Pero un audio de 1 h tarda minutos legítimos — el timeout debe ser por service, no global, para no matar jobs largos válidos.</p>
+
+      <div class="section-title">Implementación</div>
+      <ul class="file-list">
+        <li><span class="file-name">api/internal/jobs/handler.go</span><span class="file-desc">— <code>serviceMaxDuration</code> (<code>transcription: 4h</code>, <code>llm_chat: 30m</code>…); exporta <code>ServiceMaxDurations()</code> para el monitor</span></li>
+        <li><span class="file-name">api/internal/jobs/store.go</span><span class="file-desc">— <code>FailTimedOutJobs()</code>: itera por service, <code>FOR UPDATE SKIP LOCKED</code> (seguro ante llamadas concurrentes), <code>ReleaseVRAMReservation</code> y reencola o marca <code>error</code> según <code>retry_count &lt; max_retries</code></span></li>
+        <li><span class="file-name">api/internal/monitor/monitor.go</span><span class="file-desc">— en <code>tick()</code> llama <code>jobs.FailTimedOutJobs(...)</code> tras el check de heartbeat; errores se loguean sin interrumpir el tick</span></li>
+      </ul>
+
+      <div class="section-title">Tests de integración</div>
+      <ul class="test-list">
+        <li><code>TestJobTimeout_ExhaustedRetries</code>: <code>max_retries=0</code> pasado 2h → <code>error</code></li>
+        <li><code>TestJobTimeout_SchedulesRetry</code>: <code>max_retries=2</code> → <code>pending</code> + <code>retry_after</code></li>
+        <li><code>TestJobTimeout_WithinLimit_NotAffected</code>: 5 min, límite 30 min → sigue <code>running</code></li>
+        <li><code>TestJobTimeout_ReleasesVRAM</code>: <code>vram_reserved_mb</code> vuelve a 0 tras timeout</li>
+      </ul>
+
+      <div class="decision">
+        <strong>Tiempo absoluto, no intervalo PostgreSQL</strong>
+        <p>El timeout usa <code>started_at &lt; $cutoff</code> con el corte calculado en Go, no un intervalo SQL, para evitar dependencia del formato de <code>time.Duration.String()</code>. Es independiente del heartbeat (90s): acota la duración total, no la ausencia de señal.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T4.9 -->
+  <div class="task" onclick="this.classList.toggle('open')">
+    <div class="task-header">
+      <div class="task-id">T4.9</div>
+      <div class="task-meta">
+        <div class="task-title">Calibración de <code style="font-size:0.85em;color:#63b3ed;">min_vram_mb</code> real de whisper + verificación del piso del ledger</div>
+        <div class="task-desc">Medir la VRAM real de whisper-large-v2 con nvidia-smi y fijar serviceRequirements["transcription"] al valor medido (era 10000, teórico). Verificar el piso del claim. Override sin recompilar.</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo</span>
+          <span class="chip chip-time">3 h · Retro F3/F2 #1</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-15</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> whisper es el primer worker que reserva VRAM real (10 GB teóricos). La retro de F3 advirtió que el valor era teórico y el overhead de SO ~1.7 GB superaba el margen de 500 MB. La medición real mostró pico de <strong>4443–4667 MB</strong> — el valor teórico era 2× demasiado conservador.</p>
+
+      <div class="section-title">Implementación</div>
+      <ul class="file-list">
+        <li><span class="file-name">api/internal/config/config.go</span><span class="file-desc">— <code>VRAM_MARGIN_MB</code> sobreescribe el default 500 MB (ajuste post-medición sin recompilar)</span></li>
+        <li><span class="file-name">api/internal/jobs/handler.go</span><span class="file-desc">— <code>init()</code> lee <code>MIN_VRAM_TRANSCRIPTION_MB</code> y, si es entero positivo, sobreescribe <code>serviceRequirements["transcription"]</code> (default 10000)</span></li>
+        <li><span class="file-name">api/integration_test.go</span><span class="file-desc">— <code>TestVRAMLedgerPiso_MarginRespected</code>: GPU 12 GB, job 11 GB → claim OK (≤11500); segundo job 1 GB → falla (solo 500 MB libres tras el margen)</span></li>
+      </ul>
+
+      <div class="section-title">Configuración por env vars</div>
+      <table>
+        <tr><th>Variable</th><th>Default</th><th>Medido / fijado</th></tr>
+        <tr><td><code>MIN_VRAM_TRANSCRIPTION_MB</code></td><td><code>10000</code></td><td><code>5500</code> (pico 4667 + 833 margen)</td></tr>
+        <tr><td><code>VRAM_MARGIN_MB</code></td><td><code>500</code></td><td>subir si SO usa &gt; 500 MB extra</td></tr>
+      </table>
+
+      <div class="decision">
+        <strong>No reemplazar el ledger por <code>vram_free_mb</code></strong>
+        <p>El ledger previene la carrera de doble-claim; <code>vram_free_mb</code> solo sirve para detectar deriva (T2.10). El tradeoff de <code>5500 MB</code>: demasiado justo y OOM mata el worker; demasiado amplio y bloquea otros jobs. <code>5500</code> = pico medido <code>4667</code> + <code>833</code> de margen — razonado, con incertidumbre sobre audios muy largos.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T4.10 -->
+  <div class="task open" onclick="this.classList.toggle('open')">
+    <div class="task-header">
+      <div class="task-id">T4.10</div>
+      <div class="task-meta">
+        <div class="task-title">Prueba e2e con audio largo real (1–2 h) + caos</div>
+        <div class="task-desc">Checklist de aceptación de la fase contra hardware real con audio de 4 horas. Audio corto/largo, concurrencia en serie, caos (apagar ialab, matar worker, 503). Primera transcripción real de la plataforma.</div>
+        <div class="task-chips">
+          <span class="chip chip-devops">DevOps</span>
+          <span class="chip chip-time">4 h · Hardware real</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 6/6 PASS · 2026-06-15</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> los tests con faster-whisper stubado prueban el contrato imaginado. Solo el hardware con audio real prueba el que se escribió. T4.10 es la primera transcripción real end-to-end: audio de <strong>4.2 horas</strong> procesado en <strong>~28 min</strong> en la RTX 4070 Ti SUPER, sin falsos timeouts y con VRAM estable.</p>
+
+      <div class="section-title">Resultados de la corrida (6/6 PASS)</div>
+      <table>
+        <tr><th>#</th><th>Escenario</th><th>Resultado</th><th>Detalle clave</th></tr>
+        <tr><td>1</td><td>Arranque + registro</td><td class="pass">✅ PASS</td><td>worker-whisper <code>online</code> con <code>service: transcription</code></td></tr>
+        <tr><td>2</td><td>Audio corto → done</td><td class="pass">✅ PASS</td><td>VTT/SRT/JSON en <code>files/{job_id}/</code> + registrados en <code>job_files</code></td></tr>
+        <tr><td>3</td><td>Audio largo (4.2 h)</td><td class="pass">✅ PASS</td><td>~28 min; progreso fiel; heartbeat NO disparó; VRAM 4443–4667 MB estable</td></tr>
+        <tr><td>4</td><td>Concurrencia 1 (LONG→A→B)</td><td class="pass">✅ PASS</td><td>en serie; ledger reserva y libera; <code>vram_reserved_mb=0</code> al final</td></tr>
+        <tr><td>5</td><td>Caos: parar worker mid-job</td><td class="pass">✅ PASS</td><td>requeue en 99s; retomado en 3s tras <code>compose start</code></td></tr>
+        <tr><td>6</td><td>503 con file-server offline</td><td class="pass">✅ PASS</td><td>503 con mensaje claro, no 500 ni timeout colgado</td></tr>
+      </table>
+
+      <div class="section-title">5 defectos de integración encontrados y corregidos</div>
+
+      <div class="bug">
+        <strong>Build colgado por tzdata (DEBIAN_FRONTEND ausente)</strong>
+        <p>El build de <code>Dockerfile.whisper</code> se colgó esperando input interactivo de <code>tzdata</code> ("Geographic area:"). Antipatrón de Docker+Ubuntu conocido desde los 2000, invisible hasta correr en una máquina limpia. Sin linter de Dockerfiles que lo atrapara.</p>
+      </div>
+      <div class="bug">
+        <strong>make deploy solo sincroniza al VPS, no a ialab</strong>
+        <p>El repo en ialab tenía código viejo (sin <code>Dockerfile.whisper</code>). Hay que <code>rsync</code> manual a ialab además del deploy — no documentado como paso obligatorio. Pasa como deuda a F4.5 (<code>deploy-ialab</code> target).</p>
+      </div>
+      <div class="bug">
+        <strong>FILE_SERVER_URL en .env pero no en docker-compose.yml</strong>
+        <p>La variable estaba en el <code>.env</code> del VPS pero el <code>environment:</code> del servicio <code>api</code> no la referenciaba — nunca llegaba al contenedor. La API arrancaba sin error (variable opcional) y el proxy devolvía 503 para todos los archivos. Bug silencioso y confuso.</p>
+      </div>
+      <div class="bug">
+        <strong>Hosts públicos de audio caídos → escape hatch SSRF</strong>
+        <p>transfer.sh y 0x0.st estaban caídos. El SSRF exige <code>https://</code> y bloquea IPs Tailscale. Se agregó <code>ALLOW_HTTP_AUDIO=true</code> para servir desde ialab sin HTTPS — parche funcional para el e2e, no diseño final. Debe removerse del env de ialab tras el e2e.</p>
+      </div>
+      <div class="bug">
+        <strong>Disco lleno en ialab (430G/430G)</strong>
+        <p>El build de whisper falló por falta de espacio: 82 GB de imágenes Docker sin usar de otros proyectos. Docker arranca contenedores cacheados con 0 bytes libres, así que el problema es invisible hasta que intentas <code>build</code> o <code>pull</code>.</p>
+      </div>
+
+      <div class="section-title">Archivos creados</div>
+      <ul class="file-list">
+        <li><span class="file-name">docs/RUNBOOKS/e2e-f4-results.md</span> <span class="file-new">NEW</span><span class="file-desc">— checklist e2e: 6 escenarios + calibración T4.9, comandos ejecutables y tabla de resultados contra hardware</span></li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- T4.11 -->
+  <div class="task" onclick="this.classList.toggle('open')">
+    <div class="task-header">
+      <div class="task-id">T4.11</div>
+      <div class="task-meta">
+        <div class="task-title">Documentación operativa de <code style="font-size:0.85em;color:#63b3ed;">worker-whisper</code> y archivos</div>
+        <div class="task-desc">IALAB.md (operación de whisper, gestión de modelo, servidor de archivos, contrato de transcripción con curl), PORTS.md y PROJECT.md actualizados al cerrar la fase.</div>
+        <div class="task-chips">
+          <span class="chip chip-doc">Documentación</span>
+          <span class="chip chip-time">2 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-15</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <div class="section-title">Archivos modificados</div>
+      <ul class="file-list">
+        <li><span class="file-name">docs/IALAB.md</span><span class="file-desc">— sección <strong>Primer despliegue de worker-whisper</strong> (env file, variables, gestión lazy del modelo, directorio de archivos); sección <strong>Servidor de archivos</strong> (bind Tailscale, acceso, relación con el proxy); sección <strong>Transcripción — contrato y ejemplo curl</strong> (crear job → sondear progreso → descargar VTT/SRT/JSON + restricciones SSRF)</span></li>
+        <li><span class="file-name">PROJECT.md</span><span class="file-desc">— F4 ✅ Completada 2026-06-15; fase activa → F4.5; "Lo que está corriendo en producción" actualizado (worker-whisper, file-server, proxy, timeout por job); próximos pasos con pendientes de hardware</span></li>
+        <li><span class="file-name">docs/PORTS.md</span><span class="file-desc">— puerto 8001 ya registrado desde T4.6 (bind Tailscale)</span></li>
+      </ul>
+
+      <div class="section-title">Revisión post-T4.11 (pre-deploy)</div>
+      <div class="bug">
+        <strong>AUDIO_MAX_SIZE_BYTES documentado pero no conectado</strong>
+        <p>Estaba en <code>worker-whisper.env.example</code> pero <code>execute()</code> llamaba <code>download()</code> sin pasar <code>max_bytes</code>, usando siempre el default de 2 GB. Corregido: ahora lee <code>AUDIO_MAX_SIZE_BYTES</code> y lo pasa a <code>download(max_bytes=...)</code>. Cierra el criterio de T4.2. Test nuevo: <code>test_execute_passes_configured_max_bytes</code>. Salud pre-deploy: <code>workers</code> 59 tests ✅; <code>api</code> <code>go build</code>/<code>go vet</code> limpios.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- RETROSPECTIVA HIGHLIGHTS -->
+  <h2>Retrospectiva — aprendizajes clave</h2>
+
+  <div class="retro-grid">
+    <div class="retro-card">
+      <h3 class="good">Lo que funcionó bien</h3>
+      <ul>
+        <li><code>ALLOW_HTTP_AUDIO</code> como escape hatch explícito: prod sin la var → SSRF activo; testing la activa</li>
+        <li><code>MIN_VRAM_TRANSCRIPTION_MB</code> como env var: calibrar sin redeploy de código</li>
+        <li>Simular caos con <code>docker compose stop</code>: el heartbeat no distingue "contenedor parado" de "máquina apagada"</li>
+        <li>5 defectos de setup, 0 de funcionalidad: todo el código de F4 corrió bien al primer intento</li>
+      </ul>
+    </div>
+    <div class="retro-card">
+      <h3 class="lesson">Lo que aprendimos del sistema real</h3>
+      <ul>
+        <li>4.2 h de audio = ~28 min en RTX 4070 Ti SUPER (≈7 min por hora de audio)</li>
+        <li>VRAM estable 4443–4667 MB durante 4.2 h: sin leak en faster-whisper large-v2</li>
+        <li>El ledger de VRAM es sólido bajo carga real: reserva/libera sin intervención</li>
+        <li>Requeue por heartbeat real: 99s de timeout, pero job retomado en 3s tras start</li>
+      </ul>
+    </div>
+    <div class="retro-card">
+      <h3 class="risk">Lo más difícil técnicamente</h3>
+      <ul>
+        <li>Calibrar VRAM: 10000 teórico vs 4667 real; fijar 5500 con margen razonado</li>
+        <li>El escape hatch SSRF: seguro en prod, difícil para testing local sin hosting público</li>
+        <li>Lock durante <code>unload-model</code> para cerrar la carrera TOCTOU del ledger</li>
+        <li>Progreso real por segmento sin saltar de 0 a 100 en jobs de media hora</li>
+      </ul>
+    </div>
+    <div class="retro-card">
+      <h3 class="risk">Riesgos que pasan a F4.5</h3>
+      <ul>
+        <li><code>rsync</code> manual a ialab no está en el flujo de deploy → <code>deploy-ialab</code> target</li>
+        <li>SSRF bloquea testing con URLs internas → ¿servir audios desde la URL pública del cliente?</li>
+        <li>VRAM pico puede subir con audiobuffers grandes → monitorear primeros jobs reales</li>
+        <li><code>ALLOW_HTTP_AUDIO=true</code> debe removerse del env de ialab tras el e2e</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- DEUDA TECNICA -->
+  <h2>Deuda técnica registrada para F4.5+</h2>
+
+  <div class="debt">
+    <strong style="color:#f6ad55;">Sincronización a ialab fuera del flujo de deploy</strong> — <code>make deploy</code> solo sincroniza al VPS. ialab requiere <code>rsync</code> manual y no está documentado como paso obligatorio. Agregar target <code>deploy-ialab</code> al Makefile.
+  </div>
+  <div class="debt">
+    <strong style="color:#f6ad55;">ALLOW_HTTP_AUDIO=true en el env de ialab</strong> — escape hatch del SSRF para el e2e. Si ialab pasa a producción, esa variable debe removerse del <code>worker-whisper.env</code>.
+  </div>
+  <div class="debt">
+    <strong style="color:#f6ad55;">Margen VRAM de 5500 MB con incertidumbre</strong> — calibrado con audio estándar (pico 4667 + 833). Audio muy largo o con alta densidad de voz puede pedir más. Monitorear <code>nvidia-smi</code> en los primeros jobs de producción reales de Video Crack.
+  </div>
+  <div class="debt">
+    <strong style="color:#f6ad55;">Env vars críticas sin healthcheck al arrancar</strong> — el patrón "variable en <code>.env</code> pero no pasada al contenedor" fue un bug silencioso (FILE_SERVER_URL). Un log <code>"file_server_url=&lt;valor&gt; (vacío = proxy deshabilitado)"</code> al iniciar la API evitaría esta clase de debug.
+  </div>
+  <div class="debt">
+    <strong style="color:#f6ad55;">Verificación de disco en ialab antes del build</strong> — el build falló por disco lleno (430G/430G) sin diagnóstico previo. Una línea <code>df -h</code> en el target <code>workers-build</code> que falle si hay &lt;5 GB libres.
+  </div>
+  <div class="debt">
+    <strong style="color:#f6ad55;">Python 3.12 via deadsnakes en Dockerfile.whisper</strong> — <code>add-apt-repository ppa:deadsnakes/ppa</code> agrega latencia y dependencia de terceros. Alternativa más limpia: <code>python:3.12-slim</code> + CUDA libs aparte.
+  </div>
+
+  <!-- SIGUIENTE FASE -->
+  <h2>Siguiente fase — F4.5: SDK + doble ejecución de Video Crack</h2>
+
+  <div style="background:#1a1f2e;border:1px solid #2d3748;border-radius:10px;padding:1.4rem 1.6rem;margin-top:0.5rem;">
+    <p style="font-size:0.85rem;color:#a0aec0;margin-bottom:0.8rem;">Con F4 completada, la plataforma transcribe audio real end-to-end: <code>POST /ai/jobs</code> con <code>service: transcription</code> → VTT descargable vía el proxy del VPS. El ledger de VRAM, el timeout por job y la gestión lazy del modelo están verificados contra hardware con un audio de 4.2 horas.</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;font-size:0.82rem;margin-top:0.4rem;">
+      <div style="color:#a0aec0;">→ SDK mínimo para integrar Video Crack</div>
+      <div style="color:#a0aec0;">→ <code style="color:#63b3ed;">deploy-ialab</code> target en el Makefile (deuda F4)</div>
+      <div style="color:#a0aec0;">→ Quitar <code>ALLOW_HTTP_AUDIO</code> del env de ialab</div>
+      <div style="color:#a0aec0;">→ Healthcheck de env vars críticas al arrancar la API</div>
+      <div style="color:#a0aec0;">→ Monitoreo de VRAM pico en jobs reales de producción</div>
+      <div style="color:#a0aec0;">→ Después: F5 (dashboard) para visibilidad sin curl manual</div>
+    </div>
+  </div>
+
+</div>
+
+<div class="footer">
+  Generado el 2026-06-15 &mdash; AI Worker Platform feature/f4 &mdash; docs/HTML/f4-implementacion.html
+</div>
+
+<script>
+  // Las tareas abiertas por defecto ya tienen la clase .open inline.
+  // El onclick en .task-header ya hace toggle. Este script maneja el click
+  // en el header para no propagar al body.
+  document.querySelectorAll('.task-header').forEach(header => {
+    header.addEventListener('click', (e) => {
+      e.stopPropagation();
+      header.closest('.task').classList.toggle('open');
+    });
+  });
+  // Evita que el click en el task-body cierre el card.
+  document.querySelectorAll('.task-body').forEach(body => {
+    body.addEventListener('click', (e) => e.stopPropagation());
+  });
+</script>
+
+</body>
+</html>
