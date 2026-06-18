@@ -20,8 +20,8 @@ import (
 // serviceRequirements maps service → default min_vram_mb.
 var serviceRequirements = map[string]int{
 	"transcription":       10000,
-	"translation":         4000,
-	"llm_chat":            4000,
+	"translation":         5300,
+	"llm_chat":            5300,
 	"tts":                 2000,
 	"image_generation":    15000,
 	"video_generation":    14000,
@@ -46,12 +46,22 @@ var serviceMaxDuration = map[string]time.Duration{
 	"embeddings":          5 * time.Minute,
 }
 
-// T4.9: allow overriding the transcription VRAM requirement via env var so the
-// measured value can be set without a code change after calibration on real hardware.
+// T4.9/T6.6: allow overriding VRAM requirements via env var so calibrated values
+// can be adjusted without a code change after measuring on real hardware.
 func init() {
 	if s := os.Getenv("MIN_VRAM_TRANSCRIPTION_MB"); s != "" {
 		if v, err := strconv.Atoi(s); err == nil && v > 0 {
 			serviceRequirements["transcription"] = v
+		}
+	}
+	if s := os.Getenv("MIN_VRAM_TRANSLATION_MB"); s != "" {
+		if v, err := strconv.Atoi(s); err == nil && v > 0 {
+			serviceRequirements["translation"] = v
+		}
+	}
+	if s := os.Getenv("MIN_VRAM_LLM_CHAT_MB"); s != "" {
+		if v, err := strconv.Atoi(s); err == nil && v > 0 {
+			serviceRequirements["llm_chat"] = v
 		}
 	}
 }
