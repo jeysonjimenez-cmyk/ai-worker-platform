@@ -6,7 +6,7 @@ Responder estas preguntas:
 
 2. ¿Qué fue más difícil?
 
-3. ¿Qué automatizaría antes de F4?
+3. ¿Qué automatizaría antes de la fase siguiente?
 
 4. ¿Qué documentación faltó?
 
