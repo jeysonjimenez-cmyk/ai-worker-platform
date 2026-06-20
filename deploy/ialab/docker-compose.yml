@@ -1,5 +1,6 @@
 volumes:
-  files_data:  # shared between worker-whisper (write) and file-server (read)
+  files_data:    # shared between worker-whisper (write) and file-server (read)
+  ollama_models: # Ollama model cache; persists across container recreations
 
 services:
   worker-echo:
@@ -31,6 +32,51 @@ services:
         required: false
     volumes:
       - files_data:/app/files
+    network_mode: host
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  ollama:
+    # Pinned at T6.2 (2026-06-18). Model: qwen2.5:7b @ 845dbda0ea48...
+    image: ollama/ollama@sha256:bfc9c6d53cc6989aa5131a6fde6b162b2802d4d337657f3253b5f69579bddeee
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      # Bind only to localhost — worker-ollama reaches it via 127.0.0.1:11434
+      # (both services share the host network via network_mode: host).
+      OLLAMA_HOST: "127.0.0.1:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  worker-ollama:
+    build:
+      context: ../../workers
+      dockerfile: Dockerfile.ollama
+    restart: unless-stopped
+    env_file:
+      - path: /etc/ai-platform/worker-ollama.env
+        required: false
+      - path: ${HOME}/.config/ai-platform/worker-ollama.env
+        required: false
+    environment:
+      # OLLAMA_HOST and OLLAMA_MODEL are set here as fallback defaults — they are also
+      # in the env_file, which takes precedence when the env file is present.
+      # OLLAMA_IDLE_TIMEOUT is intentionally NOT set here: it must come from the env_file
+      # so operators can tune it without rebuilding the compose (default in worker: 600s).
+      OLLAMA_HOST: "http://127.0.0.1:11434"
+      OLLAMA_MODEL: "qwen2.5:7b"
     network_mode: host
     deploy:
       resources:

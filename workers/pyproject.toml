@@ -11,6 +11,7 @@ dependencies = [
 [project.scripts]
 worker-echo = "worker_echo:main"
 worker-whisper = "worker_whisper:main"
+worker-ollama = "worker_ollama:main"
 
 [dependency-groups]
 dev = [

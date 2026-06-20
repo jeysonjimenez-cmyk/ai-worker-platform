@@ -1,6 +1,6 @@
 # Resultados E2E — Fase 6: worker-ollama + convivencia + producción
 
-> Runbook ejecutado contra ialab (RTX 4070 Ti SUPER, 24564 MiB VRAM) + VPS.
+> Runbook ejecutado contra ialab (RTX 4070 Ti SUPER, 16376 MiB VRAM total; ledger cap 15946) + VPS.
 > Regla del plan: no avanzar con criterios en rojo.
 > Cubre T6.9 (convivencia del ledger) y T6.10 (corrida de producción con Video Crack).
 

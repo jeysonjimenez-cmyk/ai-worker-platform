@@ -1,13 +1,19 @@
 -include .env.deploy
 
-VPS_USER   ?= ubuntu
-VPS_HOST   ?= vps-15a6511a
-VPS_DIR    ?= /home/ubuntu/ai-worker-platform
+VPS_USER    ?= ubuntu
+VPS_HOST    ?= vps-15a6511a
+VPS_DIR     ?= /home/ubuntu/ai-worker-platform
 MIGRATE_BIN ?= migrate
+
+IALAB_USER  ?= ubuntu
+IALAB_HOST  ?= 100.103.55.110
+IALAB_DIR   ?= /home/ubuntu/ai-worker-platform
+DISK_MIN_GB ?= 5
+VPS_API_URL ?= http://100.106.192.45:8081
 
 .DEFAULT_GOAL := help
 
-.PHONY: help build test lint deploy migrate-up migrate-down verify-infra verify-environment workers-build workers-up workers-down workers-logs
+.PHONY: help build test lint deploy migrate-up migrate-down verify-infra verify-environment workers-build workers-up workers-down workers-logs deploy-ialab verify-ialab
 
 ## help: list all targets with descriptions
 help:
@@ -85,3 +91,23 @@ workers-down:
 ## workers-logs: tail worker logs (run from ialab)
 workers-logs:
 	docker compose -f deploy/ialab/docker-compose.yml logs -f
+
+## deploy-ialab: sync repo to ialab, rebuild workers with --force-recreate, verify registration
+deploy-ialab:
+	@echo "→ syncing to $(IALAB_USER)@$(IALAB_HOST):$(IALAB_DIR)"
+	rsync -az --delete \
+		--exclude '.git' \
+		--exclude '.env' \
+		--exclude 'dashboard/node_modules' \
+		--exclude 'workers/.venv' \
+		. $(IALAB_USER)@$(IALAB_HOST):$(IALAB_DIR)
+	ssh $(IALAB_USER)@$(IALAB_HOST) "bash $(IALAB_DIR)/deploy/ialab/deploy-workers.sh $(DISK_MIN_GB)"
+	@ADMIN_API_KEY="$(ADMIN_API_KEY)" IALAB_USER="$(IALAB_USER)" IALAB_HOST="$(IALAB_HOST)" \
+	  IALAB_DIR="$(IALAB_DIR)" VPS_API_URL="$(VPS_API_URL)" \
+	  bash deploy/ialab/verify-workers.sh
+
+## verify-ialab: verify worker registration on ialab without redeploying
+verify-ialab:
+	@ADMIN_API_KEY="$(ADMIN_API_KEY)" IALAB_USER="$(IALAB_USER)" IALAB_HOST="$(IALAB_HOST)" \
+	  IALAB_DIR="$(IALAB_DIR)" VPS_API_URL="$(VPS_API_URL)" \
+	  bash deploy/ialab/verify-workers.sh

@@ -179,6 +179,57 @@ el worker de ejemplo del scaffold.
 Compose: `deploy/ialab/docker-compose.yml`. Los contenedores usan `network_mode: host` para
 alcanzar la API del VPS y el endpoint `/metrics` local vía Tailscale; **no publican puertos**.
 
+### Deploy desde local (comando estándar)
+
+```bash
+# Sincroniza repo + reconstruye + fuerza recreación de todos los workers
+make deploy-ialab
+
+# Verificar registro sin redeploy
+make verify-ialab
+```
+
+Requiere en `.env.deploy` (o como variables de make):
+
+| Variable | Default | Descripción |
+|---|---|---|
+| `IALAB_USER` | `ubuntu` | Usuario SSH en ialab |
+| `IALAB_HOST` | `100.103.55.110` | IP Tailscale de ialab |
+| `IALAB_DIR` | `/home/ubuntu/ai-worker-platform` | Ruta del repo en ialab |
+| `DISK_MIN_GB` | `5` | Mínimo de GB libres antes del build (aborta si hay menos) |
+| `ADMIN_API_KEY` | — | Si está en `.env.deploy`, verifica registro vía `GET /admin/workers` |
+
+### Redeploy de workers — `--force-recreate`, no `restart`
+
+> **Regla:** `docker compose restart` NO recrea los contenedores ni re-lee los archivos de
+> entorno (`env_file`). Siempre usar `--force-recreate` para redeployar código o cambios de
+> configuración.
+
+```bash
+# Redeploy de un worker concreto (re-lee env, reconstruye imagen)
+docker compose -f <repo>/deploy/ialab/docker-compose.yml up --build -d --force-recreate worker-whisper
+
+# Redeploy de todos los workers
+docker compose -f <repo>/deploy/ialab/docker-compose.yml up --build -d --force-recreate
+```
+
+`docker compose restart` es solo para un bounce rápido del proceso cuando no hay cambios de
+código ni de configuración (e.g., el contenedor murió por un crash puntual).
+
+### Rutas de env files de workers
+
+Cada worker carga su entorno desde dos rutas en orden; la primera que exista gana:
+
+1. `/etc/ai-platform/<worker>.env` — root-owned (legacy)
+2. `~/.config/ai-platform/<worker>.env` — user-writable (**ruta estándar para nuevos workers**)
+
+Para verificar qué variables leyó un contenedor en ejecución (sin confiar en el archivo):
+
+```bash
+docker inspect <container_name> --format '{{range .Config.Env}}{{println .}}{{end}}'
+# o: cat /proc/1/environ | tr '\0' '\n'  (dentro del contenedor)
+```
+
 ### Primer despliegue de `worker-echo`
 
 ```bash
