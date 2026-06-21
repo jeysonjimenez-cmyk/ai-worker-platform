@@ -1,6 +1,7 @@
 volumes:
   files_data:    # shared between worker-whisper (write) and file-server (read)
   ollama_models: # Ollama model cache; persists across container recreations
+  higgs_models:  # Hugging Face model cache for Higgs Audio v3 (bosonai/higgs-audio-v3-tts-4b)
 
 services:
   worker-echo:
@@ -85,6 +86,54 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+
+  # Higgs Audio v3 TTS engine — Docker+SGLang-Omni sidecar.
+  # Image built locally in ialab from aibum/deploy (digest ccbf6652d973).
+  # Listens on 127.0.0.1:8002 (host network) — only reachable from worker-tts on the same host.
+  # Model: bosonai/higgs-audio-v3-tts-4b; VRAM pico medido: 14720 MiB (T7.2).
+  higgs-tts:
+    image: aibum-higgs-tts:latest
+    # restart: no — worker-tts gestiona el ciclo de vida de este container via docker stop/start.
+    # Con unless-stopped, docker compose reiniciaría el container cuando worker-tts llama docker stop,
+    # porque compose no distingue entre docker stop manual y un crash.
+    restart: "no"
+    network_mode: host
+    ipc: host
+    shm_size: '32g'
+    command: sgl-omni serve --model-path bosonai/higgs-audio-v3-tts-4b --port 8002 --host 127.0.0.1
+    volumes:
+      - higgs_models:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  worker-tts:
+    build:
+      context: ../../workers
+      dockerfile: Dockerfile.tts
+    restart: unless-stopped
+    env_file:
+      - path: /etc/ai-platform/worker-tts.env
+        required: false
+      - path: ${HOME}/.config/ai-platform/worker-tts.env
+        required: false
+    environment:
+      # TTS_HOST and TTS_IDLE_TIMEOUT are set here as fallback defaults — they are also
+      # in the env_file, which takes precedence when the env file is present.
+      # TTS_REFERENCE_AUDIO_PATH and TTS_REFERENCE_TEXT are intentionally NOT set here:
+      # they must come from the env_file so operators can configure voice cloning without
+      # rebuilding the compose (no default — standard TTS if not set).
+      TTS_HOST: "http://127.0.0.1:8002"
+    volumes:
+      - files_data:/app/files
+      # Docker socket: lets worker-tts stop/start the higgs-tts sidecar for idle unload.
+      # SGLang-Omni has no API to release GPU memory; stopping the container is the only way.
+      - /var/run/docker.sock:/var/run/docker.sock
+    network_mode: host
 
   file-server:
     image: python:3.12-slim
