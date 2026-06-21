@@ -492,6 +492,62 @@ func TestWorkerRegister_ExplicitGPUID(t *testing.T) {
 	}
 }
 
+// ─── T7.1 vram_total_mb coherence on registration ───
+
+func TestWorkerRegister_VRAMConflict_Rejected(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	srv := buildServer(t, pool, "")
+	defer srv.Close()
+
+	gpuID := "ialab/gpu-0"
+
+	// First worker establishes the GPU ceiling at 15946.
+	resp1 := post(t, srv, "/workers/register", "X-Admin-Key", adminKey, map[string]any{
+		"id": "w-tts-ialab", "hostname": "ialab",
+		"capabilities": map[string]any{"services": []string{"tts"}, "cuda": true, "vram_total_mb": 15946},
+		"api_key": "wk-tts-1",
+		"gpu_id":  gpuID,
+	})
+	if resp1.StatusCode != http.StatusOK {
+		t.Fatalf("first register: expected 200, got %d", resp1.StatusCode)
+	}
+	resp1.Body.Close()
+
+	// Second worker on the same gpu_id declares the wrong ceiling (the F6 landmine: 24564).
+	resp2 := post(t, srv, "/workers/register", "X-Admin-Key", adminKey, map[string]any{
+		"id": "w-whisper-ialab", "hostname": "ialab",
+		"capabilities": map[string]any{"services": []string{"transcription"}, "cuda": true, "vram_total_mb": 24564},
+		"api_key": "wk-whisper-1",
+		"gpu_id":  gpuID,
+	})
+	if resp2.StatusCode != http.StatusConflict {
+		body, _ := io.ReadAll(resp2.Body)
+		resp2.Body.Close()
+		t.Fatalf("wrong vram_total_mb: expected 409, got %d (body: %s)", resp2.StatusCode, body)
+	}
+	resp2.Body.Close()
+
+	// Verify the ledger ceiling was NOT corrupted by the rejected registration.
+	var total int
+	pool.QueryRow(context.Background(), `SELECT vram_total_mb FROM gpus WHERE id = $1`, gpuID).Scan(&total)
+	if total != 15946 {
+		t.Errorf("vram_total_mb corrupted: expected 15946, got %d", total)
+	}
+
+	// Re-registration with the correct value is still idempotent.
+	resp3 := post(t, srv, "/workers/register", "X-Admin-Key", adminKey, map[string]any{
+		"id": "w-tts-ialab", "hostname": "ialab-2",
+		"capabilities": map[string]any{"services": []string{"tts"}, "cuda": true, "vram_total_mb": 15946},
+		"api_key": "wk-tts-1",
+		"gpu_id":  gpuID,
+	})
+	if resp3.StatusCode != http.StatusOK {
+		t.Fatalf("re-register same value: expected 200, got %d", resp3.StatusCode)
+	}
+	resp3.Body.Close()
+}
+
 // ─── T1.6 claim: SKIP LOCKED + VRAM reservation ───
 
 func TestClaim_BasicFlow(t *testing.T) {

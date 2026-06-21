@@ -1,5 +1,9 @@
 # AI Worker Platform — Contexto para Claude
 
+## ⚠️ Entorno de desarrollo: esta máquina ES ialab
+
+El desarrollo ocurre **sobre ialab** (`hostname=ialab`, RTX 4070 Ti SUPER, Tailscale `100.103.55.110`). **No hagas `ssh ialab`** — el filesystem, la GPU, los env files (`~/.config/ai-platform/...`), Docker Compose de los workers y `nvidia-smi` están **aquí, localmente**. Aunque DESIGN.md/IALAB.md describan ialab como nodo remoto accesible por Tailscale desde el VPS, eso aplica al VPS; para el dev local, ialab es esta máquina. El target `make deploy-ialab` (rsync) existe por el flujo formal de deploy, pero los comandos sobre ialab se corren directos. **El VPS sí es remoto** (Tailscale).
+
 ## Fuentes de verdad
 
 | Qué | Dónde |

@@ -22,7 +22,7 @@ var serviceRequirements = map[string]int{
 	"transcription":       10000,
 	"translation":         5300,
 	"llm_chat":            5300,
-	"tts":                 2000,
+	"tts":                 14720, // T7.6: calibrated from Higgs v3 real peak on ialab RTX 4070 Ti SUPER (idle 14472, synthesis peak 14720)
 	"image_generation":    15000,
 	"video_generation":    14000,
 	"lipsync":             13000,
@@ -46,7 +46,7 @@ var serviceMaxDuration = map[string]time.Duration{
 	"embeddings":          5 * time.Minute,
 }
 
-// T4.9/T6.6: allow overriding VRAM requirements via env var so calibrated values
+// T4.9/T6.6/T7.6: allow overriding VRAM requirements via env var so calibrated values
 // can be adjusted without a code change after measuring on real hardware.
 func init() {
 	if s := os.Getenv("MIN_VRAM_TRANSCRIPTION_MB"); s != "" {
@@ -62,6 +62,11 @@ func init() {
 	if s := os.Getenv("MIN_VRAM_LLM_CHAT_MB"); s != "" {
 		if v, err := strconv.Atoi(s); err == nil && v > 0 {
 			serviceRequirements["llm_chat"] = v
+		}
+	}
+	if s := os.Getenv("MIN_VRAM_TTS_MB"); s != "" {
+		if v, err := strconv.Atoi(s); err == nil && v > 0 {
+			serviceRequirements["tts"] = v
 		}
 	}
 }

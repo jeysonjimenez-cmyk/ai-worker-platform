@@ -39,6 +39,18 @@ type capabilities struct {
 	VRAMTotalMB int      `json:"vram_total_mb"`
 }
 
+// ErrVRAMConflict is returned when a worker declares a vram_total_mb that differs
+// from the value already stored in the ledger for its gpu_id (T7.1 — R1/R2 fix).
+type ErrVRAMConflict struct {
+	GPUID      string
+	LedgerMB   int
+	DeclaredMB int
+}
+
+func (e *ErrVRAMConflict) Error() string {
+	return fmt.Sprintf("vram_total_mb mismatch for gpu_id %s: ledger has %d MiB, worker declares %d MiB; fix WORKER_CAPABILITIES to match the ledger", e.GPUID, e.LedgerMB, e.DeclaredMB)
+}
+
 func Register(ctx context.Context, pool *pgxpool.Pool, p RegisterParams) (*Worker, error) {
 	var caps capabilities
 	json.Unmarshal(p.Capabilities, &caps)
@@ -59,10 +71,19 @@ func Register(ctx context.Context, pool *pgxpool.Pool, p RegisterParams) (*Worke
 			id = p.Hostname + "/gpu-0"
 		}
 		gpuID = &id
+
+		// Reject if the GPU already exists with a different vram_total_mb: a stale env var
+		// could silently corrupt the ledger ceiling and disable the anti-OOM guard (F6 R1).
+		var existingVRAM int
+		scanErr := tx.QueryRow(ctx, `SELECT vram_total_mb FROM gpus WHERE id = $1`, id).Scan(&existingVRAM)
+		if scanErr == nil && existingVRAM != caps.VRAMTotalMB {
+			return nil, &ErrVRAMConflict{GPUID: id, LedgerMB: existingVRAM, DeclaredMB: caps.VRAMTotalMB}
+		}
+
 		_, err = tx.Exec(ctx, `
 			INSERT INTO gpus (id, hostname, vram_total_mb)
 			VALUES ($1, $2, $3)
-			ON CONFLICT (id) DO UPDATE SET vram_total_mb = EXCLUDED.vram_total_mb`,
+			ON CONFLICT (id) DO UPDATE SET hostname = EXCLUDED.hostname`,
 			id, p.Hostname, caps.VRAMTotalMB,
 		)
 		if err != nil {

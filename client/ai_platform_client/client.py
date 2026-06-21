@@ -29,6 +29,7 @@ class Client:
         requirements: dict[str, Any] | None = None,
         routing: dict[str, Any] | None = None,
         webhook_url: str | None = None,
+        workflow_id: str | None = None,
     ) -> str:
         """POST /ai/jobs with X-App-Key, returns job_id."""
         body: dict[str, Any] = {"service": service, "payload": payload}
@@ -40,6 +41,8 @@ class Client:
             body["routing"] = routing
         if webhook_url is not None:
             body["webhook_url"] = webhook_url
+        if workflow_id is not None:
+            body["workflow_id"] = workflow_id
 
         resp = httpx.post(
             f"{self._base}/ai/jobs",

@@ -3,6 +3,7 @@ package workers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -61,6 +62,11 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		GPUID:        req.GPUID,
 	})
 	if err != nil {
+		var vramErr *ErrVRAMConflict
+		if errors.As(err, &vramErr) {
+			writeError(w, http.StatusConflict, err.Error())
+			return
+		}
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

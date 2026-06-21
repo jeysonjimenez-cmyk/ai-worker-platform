@@ -33,6 +33,8 @@ Marcar cada criterio de aceptación de la tarea según su estado real:
 
 Solo marcar `[x]` si el criterio es verificable con lo que se implementó ahora. Los criterios con "verificable en T4.X" o "audio largo real" se dejan `[ ]` hasta que esa tarea se cierre.
 
+Al final del backlog hay un resumen, marca ahi tambien.
+
 ---
 
 ### 2. Changelog `docs/CHANGELOG/f<N>.md`
