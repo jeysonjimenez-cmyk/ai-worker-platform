@@ -5,7 +5,7 @@
 
 ## Estado actual
 
-**Fase activa: F6 — worker-ollama**
+**🏁 MVP completo — F0–F7 cerradas. Video Crack opera 100 % sobre la plataforma; sistema viejo apagado.**
 
 | Fase | Estado | Fecha de cierre |
 |---|---|---|
@@ -16,8 +16,8 @@
 | F4 — worker-whisper | ✅ Completada y verificada en hardware³ | 2026-06-15 |
 | F4.5 — SDK mínimo + Video Crack transcribe | ✅ Completada y verificada en producción⁴ | 2026-06-16 |
 | F5 — Dashboard mínimo | ✅ Completada y verificada en producción⁵ | 2026-06-16 |
-| F6 — worker-ollama | ⏳ Pendiente | — |
-| F7 — worker-tts + migración completa | ⏳ Pendiente | — |
+| F6 — worker-ollama | ✅ Completada y verificada en producción⁶ | 2026-06-18 |
+| F7 — worker-tts + migración completa | ✅ Completada y verificada en producción⁷ | 2026-06-21 |
 
 > ¹ Implementación F3 completa (T3.1–T3.13) y e2e en hardware ejecutado el 2026-06-13: **4/4 escenarios PASS** (`docs/RUNBOOKS/e2e-f3-results.md`). La corrida expuso y corrigió 4 defectos reales (bind a Tailscale, bug del claim con `services` nil, fallback del `env_file`, doc de puertos).
 
@@ -69,12 +69,16 @@
 | Margen de deriva ledger (`VRAM_DRIFT_MARGIN_MB`) | 512 MB (configurable) |
 | Retención de métricas crudas | 7 días → agrega a `worker_metrics_hourly` |
 
-## Próximos pasos (F6)
+## Próximos pasos (post-MVP)
 
-**F6 — worker-ollama** · Segundo servicio: traducción local vía Ollama. Valida convivencia de dos modelos en la misma GPU vía ledger. Al cerrar F6, Video Crack adopta traducción en producción (doble ejecución, mismo patrón F4.5).
+**MVP cerrado.** F9–F11 son mejoras post-MVP: workers externos/routing/costos (F9), workers bajo demanda ComfyUI/lipsync (F10), SSE/métricas históricas/prioridad (F11).
 
-**F5 cerrada.** Ver `docs/CHANGELOG/f5.md` y `docs/RUNBOOKS/e2e-f5-results.md`. El dashboard reemplaza al runbook SQL `f4.5-ops-without-dashboard.md` para operación diaria.
+**F7 cerrada.** Ver `docs/CHANGELOG/f7.md` y `docs/RUNBOOKS/e2e-f7-results.md`. Worker-tts con Higgs v3, exclusión mutua VRAM verificada, Video Crack 100 % en plataforma.
+
+> ⁶ F6 completa (T6.1–T6.8) y corrida de producción ejecutada el 2026-06-18: worker-ollama (`qwen2.5:7b`) operativo; Video Crack traduce vía plataforma en `TRANSLATE_MODE=both`; convivencia whisper+ollama verificada (8796 MiB pico, sin OOM); recovery mid-job confirmado; `MIN_VRAM_TRANSLATION_MB=5300` calibrado.
 
 > ⁴ F4.5 completa (T4.5.1–T4.5.10) y corrida de producción ejecutada el 2026-06-16 (`docs/RUNBOOKS/e2e-f4.5-results.md`): **5/5 escenarios PASS**. Video Crack transcribe vía plataforma con SSRF estricto. Corpus de 5 videos (2.2 min–4.2 h) con similitud 90.5–97.3% (PARIDAD_ACEPTABLE). Caos recovery: 54s requeue, <10s a running. VRAM pico 5060 MiB (margen 440 MiB sobre threshold de 5500). Flag de Video Crack en `both` (sistema viejo activo como respaldo — se apaga en F7).
 
 > ⁵ F5 completa (T5.1–T5.9) y corrida de producción ejecutada el 2026-06-16 (`docs/RUNBOOKS/e2e-f5-results.md`): **5/5 escenarios PASS**. Dashboard operativo en `http://100.106.192.45:3000`. Cancelar y reintentar funcionan desde la UI. Diagnóstico de job fallido (error + payload) sin `psql`. Fix de CORS detectado y resuelto en la corrida de verificación visual. Worker offline detectado en ≤130s (vs. criterio escrito <90s — es el tick de ~30s del monitor de heartbeat de F1; mejora a F11).
+
+> ⁷ F7 completa (T7.1–T7.14) y corrida de producción ejecutada el 2026-06-21 (`docs/RUNBOOKS/e2e-f7-results.md`): worker-tts (Higgs Audio v3, `bosonai/higgs-audio-v3-tts-4b`) operativo; `MIN_VRAM_TTS_MB=14720` calibrado (pico real); exclusión mutua TTS vs. whisper/ollama verificada por ledger (TTS 15337 MiB, whisper+ollama 9505 MiB, sin OOM); unload via `docker stop` inmediato (SGLang-Omni sin endpoint de flush); Video Crack 100 % en plataforma (`TRANSCRIBE_MODE=platform`, `TRANSLATE_MODE=platform`, `TTS_MODE=platform`); LM Studio apagado; system viejo desactivado.

@@ -97,23 +97,20 @@ migrate -path ./migrations -database $DATABASE_URL up
 
 ## Fase activa
 
-**F6 ✅ cerrada 2026-06-18** — worker-ollama en producción; Video Crack traduce vía plataforma.
-**Siguiente: F7 — worker-tts + Video Crack adopta TTS (tercer y último servicio de la migración).**
+**🏁 F7 ✅ cerrada 2026-06-21 — MVP completo. Video Crack opera 100 % sobre la plataforma; sistema viejo apagado.**
+**Siguiente: F9–F11 son mejoras post-MVP (workers externos, dashboard avanzado, métricas).**
 
-Estado al 2026-06-18:
-- F0–F4 ✅ cerradas
-- F4.5 ✅ cerrada — Video Crack transcribe vía plataforma (SSRF estricto, app key activa, corpus 5 videos PARIDAD_ACEPTABLE, caos recovery 54s)
-- F5 ✅ cerrada — Dashboard en `http://100.106.192.45:3000`, cancelar/reintentar desde UI, diagnóstico sin `psql`. El runbook SQL `f4.5-ops-without-dashboard.md` queda como respaldo.
-- F6 ✅ cerrada — worker-ollama (`qwen2.5:7b`, ialab RTX 4070 Ti SUPER); Video Crack traduce en `TRANSLATE_MODE=both`; convivencia whisper+ollama verificada (8796 MiB pico, sin OOM); recovery mid-job confirmado.
-- F7 ⏳ worker-tts + Video Crack adopta TTS
+Estado al 2026-06-21:
+- F0–F6 ✅ cerradas
+- F7 ✅ cerrada — worker-tts (Higgs v3, 14720 MiB calibrado); Video Crack 100 % en plataforma; LM Studio apagado; `higgs-tradu` N/A.
 
-Postura de producción al cerrar F6:
-- Dashboard servido en `100.106.192.45:3000` (Tailscale, no expuesto a internet)
+Postura de producción al cerrar F7:
+- Dashboard en `100.106.192.45:3000` (Tailscale)
 - Auth por admin key (`X-Admin-Key`), sin sistema de usuarios
-- CORS configurado en la API para `/admin/*` (`withAdminCORS` en `api/main.go`)
-- `VITE_API_URL=http://100.106.192.45:8081` en el `.env` del VPS (build-time del dashboard)
-- Worker offline detectado en ≤70s (heartbeatTimeout=60s, tickInterval=10s en `monitor.go`)
-- Runbook SQL `f4.5-ops-without-dashboard.md` sigue activo como respaldo
-- `worker-ollama` en ialab: `qwen2.5:7b` @ digest `845dbda0...`, `MIN_VRAM_TRANSLATION_MB=5300`
-- Video Crack: `TRANSLATE_MODE=both` (sistema viejo activo como respaldo; switch a `platform` es F7)
-- Ledger VRAM ialab: `vram_total_mb=15946`, whisper 5500 + translation 5300 = 10800 MiB máx reservado
+- Worker offline detectado en ≤70s (heartbeatTimeout=60s, tickInterval=10s)
+- Runbook SQL `f4.5-ops-without-dashboard.md` sigue válido como respaldo (sin cambios de schema en F7)
+- `worker-whisper`: `ALLOW_HTTP_AUDIO=1` activo (Video Crack sirve audio por loopback)
+- `worker-ollama`: `qwen2.5:7b` @ digest `845dbda0...`, `MIN_VRAM_TRANSLATION_MB=5300`
+- `worker-tts`: Higgs Audio v3 `aibum-higgs-tts:latest` @ `ccbf6652d973`, `MIN_VRAM_TTS_MB=14720`; unload via `docker stop` inmediato (no idle timeout — SGLang-Omni sin endpoint de flush)
+- Video Crack: `TRANSCRIBE_MODE=platform`, `TRANSLATE_MODE=platform`, `TTS_MODE=platform`; TTS se dispara manualmente por el usuario (no auto-chain)
+- Ledger VRAM ialab: `vram_total_mb=15946`; TTS es mutuamente excluyente con whisper/ollama (14720+5500 > 15946)

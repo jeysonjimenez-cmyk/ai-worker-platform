@@ -355,6 +355,8 @@ RETURNING id;
 
 Si el UPDATE no retorna fila, no hay VRAM: el job sigue `pending`. La reserva se libera cuando el job termina **y** el worker descarga el modelo (un modelo que queda caliente en VRAM mantiene su reserva). `vram_free_mb` del Node Agent sirve para verificar que el ledger no se desvíe de la realidad y para el dashboard.
 
+**Semántica por-job del ledger:** la reserva de VRAM se ata al ciclo de vida del *job*, no al del *modelo cargado*. Cuando un worker reclama un job, incrementa `vram_reserved_mb`; cuando el job completa (done/error/cancel) y el worker llama `POST /workers/{id}/unload-model`, decrementa. Un modelo que queda caliente entre jobs (sin idle-unload) mantiene su reserva en el ledger aunque `nvidia-smi` muestre la VRAM ocupada — esto es correcto: el ledger bloquea nuevos claims sobre esa VRAM hasta que el unload se notifica explícitamente. Consecuencia operativa: `vram_reserved_mb = 0` con modelo caliente en GPU es una deriva entre ledger y realidad; el diagnóstico es verificar que el worker haya llamado `unload-model` correctamente.
+
 ### Servicios centralizados en el VPS
 
 - **Heartbeat monitor**: si un worker no hace heartbeat en 90s, sus jobs `running` vuelven a `pending` y el worker pasa a `offline`. El timeout es 90s (no 30s) para tolerar GPUs saturadas durante generación de video
