@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fase 6 — worker-ollama: traducción local + Video Crack adopta traducción</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f1117; color: #e2e8f0; line-height: 1.6; }
+
+    /* HEADER */
+    .header { background: linear-gradient(135deg, #1a1f2e 0%, #0f1117 100%); border-bottom: 1px solid #2d3748; padding: 2.5rem 3rem; }
+    .header h1 { font-size: 1.7rem; font-weight: 800; color: #f7fafc; letter-spacing: -0.02em; }
+    .header .subtitle { font-size: 0.95rem; color: #718096; margin-top: 0.3rem; }
+    .badges { display: flex; gap: 0.5rem; margin-top: 0.9rem; flex-wrap: wrap; }
+    .badge { display: inline-block; padding: 0.2rem 0.7rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
+    .badge-green { background: #1a4731; color: #68d391; border: 1px solid #276749; }
+    .badge-blue { background: #1a2744; color: #63b3ed; border: 1px solid #2b4c8c; }
+    .badge-purple { background: #2d1f4e; color: #b794f4; border: 1px solid #553c9a; }
+    .badge-orange { background: #3d2200; color: #f6ad55; border: 1px solid #7b4d00; }
+    .badge-teal { background: #1a3535; color: #4fd1c5; border: 1px solid #2c6060; }
+
+    /* LAYOUT */
+    .container { max-width: 980px; margin: 0 auto; padding: 2rem 3rem 4rem; }
+
+    /* RESUMEN GRID */
+    .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin: 2rem 0; }
+    .card { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 10px; padding: 1.2rem 1.4rem; }
+    .card .label { font-size: 0.72rem; color: #718096; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.4rem; }
+    .card .value { font-size: 1.6rem; font-weight: 800; color: #68d391; }
+    .card .sub { font-size: 0.78rem; color: #a0aec0; margin-top: 0.15rem; }
+
+    /* ARQUITECTURA */
+    .arch-diagram { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 10px; padding: 1.5rem 2rem; margin: 1.5rem 0; font-family: 'Fira Code', monospace; font-size: 0.82rem; line-height: 1.8; color: #a0aec0; }
+    .arch-diagram .hl { color: #68d391; font-weight: 600; }
+    .arch-diagram .hl2 { color: #63b3ed; font-weight: 600; }
+    .arch-diagram .hl3 { color: #b794f4; font-weight: 600; }
+    .arch-diagram .dim { color: #4a5568; }
+
+    /* TASK CARDS */
+    h2 { font-size: 1rem; font-weight: 700; color: #a0aec0; margin: 2.5rem 0 1rem; text-transform: uppercase; letter-spacing: 0.08em; padding-bottom: 0.4rem; border-bottom: 1px solid #2d3748; }
+
+    .task { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 10px; margin-bottom: 1.2rem; overflow: hidden; }
+    .task-header { display: flex; align-items: flex-start; gap: 1rem; padding: 1.1rem 1.4rem; cursor: pointer; user-select: none; }
+    .task-header:hover { background: #1e2535; }
+    .task-id { font-size: 0.72rem; font-weight: 700; color: #4a5568; font-family: monospace; white-space: nowrap; padding-top: 0.1rem; }
+    .task-meta { flex: 1; }
+    .task-title { font-size: 0.95rem; font-weight: 700; color: #f7fafc; }
+    .task-desc { font-size: 0.82rem; color: #718096; margin-top: 0.2rem; }
+    .task-chips { display: flex; gap: 0.4rem; margin-top: 0.5rem; flex-wrap: wrap; }
+    .chip { font-size: 0.7rem; padding: 0.15rem 0.55rem; border-radius: 4px; font-weight: 500; }
+    .chip-dev { background: #1a2744; color: #63b3ed; }
+    .chip-infra { background: #2d1f4e; color: #b794f4; }
+    .chip-devops { background: #3d2200; color: #f6ad55; }
+    .chip-doc { background: #1a3a2a; color: #68d391; }
+    .chip-sec { background: #3d1a1a; color: #fc8181; }
+    .chip-time { background: #161b27; color: #718096; border: 1px solid #2d3748; }
+    .task-status { font-size: 0.75rem; color: #68d391; font-weight: 700; white-space: nowrap; padding-top: 0.1rem; }
+    .task-status.partial { color: #f6ad55; }
+    .task-toggle { font-size: 0.75rem; color: #4a5568; margin-left: 0.5rem; padding-top: 0.1rem; transition: transform 0.2s; }
+    .task.open .task-toggle { transform: rotate(180deg); }
+
+    .task-body { padding: 0 1.4rem 1.2rem; border-top: 1px solid #1e2535; display: none; }
+    .task.open .task-body { display: block; }
+    .task-body p { font-size: 0.85rem; color: #a0aec0; margin: 1rem 0 0.6rem; }
+    .task-body p strong { color: #e2e8f0; }
+
+    /* SECTIONS WITHIN TASK */
+    .section { margin-bottom: 1rem; }
+    .section-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; color: #4a5568; margin-bottom: 0.5rem; margin-top: 0.8rem; }
+
+    /* FILES */
+    .file-list { list-style: none; }
+    .file-list li { display: flex; align-items: flex-start; gap: 0.6rem; padding: 0.4rem 0; border-bottom: 1px solid #161b27; font-size: 0.82rem; }
+    .file-list li:last-child { border-bottom: none; }
+    .file-name { font-family: monospace; color: #63b3ed; white-space: nowrap; flex-shrink: 0; }
+    .file-desc { color: #a0aec0; }
+    .file-new { font-size: 0.65rem; font-weight: 700; color: #68d391; background: #1a3a2a; border: 1px solid #276749; padding: 0.05rem 0.35rem; border-radius: 3px; margin-left: 0.3rem; flex-shrink: 0; }
+
+    /* TESTS */
+    .test-list { list-style: none; }
+    .test-list li { display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.3rem 0; font-size: 0.82rem; color: #a0aec0; }
+    .test-list li::before { content: '✓'; color: #68d391; font-weight: 700; flex-shrink: 0; margin-top: 0.05rem; }
+
+    /* DECISIONS */
+    .decision { background: #161b27; border-left: 3px solid #4299e1; border-radius: 0 6px 6px 0; padding: 0.65rem 1rem; margin: 0.4rem 0; font-size: 0.82rem; }
+    .decision strong { color: #63b3ed; display: block; margin-bottom: 0.15rem; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.03em; }
+    .decision p { color: #a0aec0; margin: 0; }
+
+    /* DEBT */
+    .debt { background: #2d1800; border-left: 3px solid #f6ad55; border-radius: 0 6px 6px 0; padding: 0.65rem 1rem; margin: 0.4rem 0; font-size: 0.82rem; color: #fbd38d; }
+
+    /* BUG / ISSUE FOUND */
+    .bug { background: #2d1a1a; border-left: 3px solid #fc8181; border-radius: 0 6px 6px 0; padding: 0.65rem 1rem; margin: 0.4rem 0; font-size: 0.82rem; }
+    .bug strong { color: #fc8181; display: block; margin-bottom: 0.15rem; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.03em; }
+    .bug p { color: #fbd38d; margin: 0; }
+
+    /* TABLE */
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin: 0.5rem 0; }
+    th { background: #161b27; color: #718096; padding: 0.45rem 0.8rem; text-align: left; font-weight: 600; border-bottom: 1px solid #2d3748; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    td { padding: 0.45rem 0.8rem; border-bottom: 1px solid #161b27; color: #e2e8f0; vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+    td code { font-family: monospace; background: #161b27; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.78rem; color: #63b3ed; }
+    .pass { color: #68d391; font-weight: 600; }
+    .partial { color: #f6ad55; font-weight: 600; }
+
+    /* RETRO SECTION */
+    .retro-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
+    .retro-card { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 8px; padding: 1.1rem 1.3rem; }
+    .retro-card h3 { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.6rem; }
+    .retro-card h3.good { color: #68d391; }
+    .retro-card h3.risk { color: #f6ad55; }
+    .retro-card h3.lesson { color: #b794f4; }
+    .retro-card ul { list-style: none; }
+    .retro-card ul li { font-size: 0.82rem; color: #a0aec0; padding: 0.25rem 0; border-bottom: 1px solid #1e2535; }
+    .retro-card ul li:last-child { border-bottom: none; }
+    .retro-card ul li::before { content: '→ '; color: #4a5568; }
+
+    /* FOOTER */
+    .footer { text-align: center; padding: 2rem; font-size: 0.75rem; color: #4a5568; border-top: 1px solid #1a1f2e; margin-top: 3rem; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Fase 6 — worker-ollama: traducción local + Video Crack adopta traducción</h1>
+  <div class="subtitle">Implementación completa · AI Worker Platform · feature/f6</div>
+  <div class="badges">
+    <span class="badge badge-green">✅ Cerrada 2026-06-18</span>
+    <span class="badge badge-blue">11 tareas + 3 fixes de integración</span>
+    <span class="badge badge-purple">Ollama · qwen2.5:7b · digest pinneado</span>
+    <span class="badge badge-teal">Convivencia whisper+ollama sin OOM</span>
+    <span class="badge badge-orange">3/4 criterios en hardware (3º por math+F1)</span>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- RESUMEN NUMÉRICO -->
+  <div class="summary-grid">
+    <div class="card">
+      <div class="label">Archivos nuevos</div>
+      <div class="value">12</div>
+      <div class="sub">worker-ollama, 5 scripts ialab, 2 runbooks (+ comparador en Video Crack)</div>
+    </div>
+    <div class="card">
+      <div class="label">Tests añadidos</div>
+      <div class="value">15</div>
+      <div class="sub">worker-ollama con Ollama mockeado · sin GPU en CI</div>
+    </div>
+    <div class="card">
+      <div class="label">Convivencia VRAM</div>
+      <div class="value">8796<span style="font-size:0.9rem;"> MiB</span></div>
+      <div class="sub">pico whisper+ollama · 0 OOM · ledger 10800 ≤ 15946</div>
+    </div>
+    <div class="card">
+      <div class="label">Modelo</div>
+      <div class="value" style="font-size:1.15rem;">qwen2.5:7b</div>
+      <div class="sub">pico real 4779 MiB → ledger 5300 MiB</div>
+    </div>
+  </div>
+
+  <!-- ARQUITECTURA -->
+  <h2>Qué hace el sistema después de F6</h2>
+
+  <div class="arch-diagram">
+    <span class="dim">┌──────────────── Video Crack (consumidor real, SDK) ──────────────────┐</span><br>
+    │  <span class="hl">transcripción</span> (F4.5, prod) &nbsp;+&nbsp; <span class="hl">traducción</span> (F6, <code style="color:#f6ad55;font-size:0.8em;">TRANSLATE_MODE=both</code>) │<br>
+    │  <span class="hl2">create_job("translation")</span> → <span class="hl2">wait()</span> → <code style="color:#b794f4;font-size:0.8em;">job["result"]</code> (sin download)  │<br>
+    <span class="dim">└──────────────────────────────────────────────────────────────────────┘</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">│  X-App-Key (reusada de F4.5)</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">↓</span><br>
+    <span class="dim">┌──────────────────────── VPS 100.106.192.45 ─────────────────────────┐</span><br>
+    │  <span class="hl">API Go</span> :8081 · ledger VRAM <span class="hl2">vram_total_mb=15946</span>                  │<br>
+    │  serviceRequirements: <span class="hl3">transcription 5500</span> · <span class="hl3">translation/llm_chat 5300</span> │<br>
+    <span class="dim">└──────────────────────────────────────────────────────────────────────┘</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">│  Tailscale · claim SKIP LOCKED + reserva atómica</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">↓</span><br>
+    <span class="dim">┌──────── ialab 100.103.55.110 · RTX 4070 Ti SUPER (16376 MiB) ────────┐</span><br>
+    │  <span class="hl">worker-whisper</span> (transcription) &nbsp;~5060 MiB pico                  │<br>
+    │  <span class="hl">worker-ollama</span> (translation, llm_chat) → <span class="hl2">Ollama :11434</span> (localhost) │<br>
+    │  &nbsp;&nbsp;qwen2.5:7b <code style="color:#b794f4;font-size:0.8em;">@845dbda0…</code> ~4779 MiB · idle-unload 600s         │<br>
+    │  <span class="hl3">2 modelos conviven bajo el ledger · pico conjunto 8796 MiB</span>       │<br>
+    <span class="dim">└──────────────────────────────────────────────────────────────────────┘</span>
+  </div>
+
+  <!-- TAREAS -->
+  <h2>Tareas implementadas <span style="font-size:0.75rem;color:#4a5568;font-weight:400;text-transform:none;letter-spacing:0;">(click para expandir)</span></h2>
+
+  <!-- T6.1 -->
+  <div class="task open">
+    <div class="task-header">
+      <div class="task-id">T6.1</div>
+      <div class="task-meta">
+        <div class="task-title">Tooling de deploy a ialab: <code style="font-size:0.85em;color:#63b3ed;">rsync</code> + guarda de disco + <code style="font-size:0.85em;color:#63b3ed;">--force-recreate</code></div>
+        <div class="task-desc">Cierra la deuda que F4/F4.5 difirieron "hasta la próxima fase que toque workers". <code style="font-size:0.85em;">make deploy-ialab</code> = rsync → build con guarda de disco → verificación de registro, todo sin pasos manuales.</div>
+        <div class="task-chips">
+          <span class="chip chip-devops">DevOps</span>
+          <span class="chip chip-time">3 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-17</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> F4 perdió un ciclo porque <code>make deploy</code> solo sincroniza al VPS y ialab quedaba con código viejo (rsync manual no documentado, R1). F6 agrega un worker nuevo a ialab — sin tooling repetible el código no llega o llega incompleto.</p>
+
+      <div class="section-title">Archivos creados</div>
+      <ul class="file-list">
+        <li><span class="file-name">deploy/ialab/deploy-workers.sh</span> <span class="file-new">NEW</span><span class="file-desc">— Corre ON ialab tras el rsync: (1) guarda de disco sobre el docker root, aborta si hay &lt; <code>DISK_MIN_GB</code> (default 5 G) (R2); (2) <code>docker compose up --build -d --force-recreate</code> (re-lee el env_file, a diferencia de <code>restart</code>, R5); (3) <code>docker compose ps</code>.</span></li>
+        <li><span class="file-name">deploy/ialab/verify-workers.sh</span> <span class="file-new">NEW</span><span class="file-desc">— Corre LOCALMENTE: espera el registro, SSHea a ialab por logs y, con <code>ADMIN_API_KEY</code>, llama a <code>GET /admin/workers</code> en el VPS — el check definitivo de "registrado y claimando".</span></li>
+      </ul>
+
+      <div class="section-title">Archivos modificados</div>
+      <ul class="file-list">
+        <li><span class="file-name">Makefile</span><span class="file-desc">— Variables <code>IALAB_*</code>, <code>DISK_MIN_GB</code>, <code>VPS_API_URL</code>; targets <code>deploy-ialab</code> y <code>verify-ialab</code>.</span></li>
+        <li><span class="file-name">docs/IALAB.md</span><span class="file-desc">— Sección "Redeploy — <code>--force-recreate</code>, no <code>restart</code>" (codifica R5) y "Rutas de env files" (<code>/etc/</code> vs <code>~/.config/</code>, cómo verificar el env del proceso).</span></li>
+      </ul>
+
+      <div class="decision">
+        <strong>La regla R5 por fin codificada, no en una retro</strong>
+        <p><code>docker compose restart</code> no recrea el container ni re-lee el env_file — mordió en F3 y F4.5. <code>deploy-workers.sh</code> usa <code>--force-recreate</code> siempre, y <code>docs/IALAB.md</code> lo documenta como convención, no como conocimiento perdido en una retro.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T6.2 -->
+  <div class="task">
+    <div class="task-header">
+      <div class="task-id">T6.2</div>
+      <div class="task-meta">
+        <div class="task-title">Timebox de modelo de traducción: elegir + medir VRAM + calidad sobre subtítulos reales</div>
+        <div class="task-desc">Decidir el modelo de Ollama con prueba real <em>antes</em> de escribir el worker (R9, recomendación #4 del plan: timebox 2 días). Resultado: <code style="font-size:0.85em;color:#63b3ed;">qwen2.5:7b</code>, calidad aceptable a la primera.</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo · Spike</span>
+          <span class="chip chip-time">4 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-18</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> la calidad de traducción local insuficiente era el riesgo de producto de la fase (R9). Medir VRAM y calidad temprano de-riesga la calibración y la convivencia antes de escribir código.</p>
+
+      <div class="section-title">Archivos creados</div>
+      <ul class="file-list">
+        <li><span class="file-name">deploy/ialab/timebox-model.sh</span> <span class="file-new">NEW</span><span class="file-desc">— Evalúa un candidato: pull, 5 traducciones (3 ES→EN + 2 EN→ES estilo corpus), mide VRAM antes/después con <code>nvidia-smi</code>, imprime el ID para pinning.</span></li>
+        <li><span class="file-name">docs/RUNBOOKS/t6.2-model-timebox.md</span> <span class="file-new">NEW</span><span class="file-desc">— Tabla de candidatos, resultados (VRAM, latencia, calidad por muestra, veredicto) y pasos post-decisión.</span></li>
+      </ul>
+
+      <div class="section-title">Resultados reales (ialab, 2026-06-18)</div>
+      <table>
+        <tr><th>Métrica</th><th>Valor</th></tr>
+        <tr><td>Modelo</td><td><code>qwen2.5:7b</code> · Q4_K_M · 7.6B · 4.7 GB disco</td></tr>
+        <tr><td>Digest</td><td><code>845dbda0ea48…</code></td></tr>
+        <tr><td>VRAM pico</td><td>4779 MiB (baseline 346 → loaded 5125)</td></tr>
+        <tr><td>Latencia</td><td>~260–300 ms/subtítulo warm · ~27 s cold load</td></tr>
+        <tr><td>Calidad</td><td class="pass">aceptable en 5/5 ES↔EN</td></tr>
+      </table>
+
+      <div class="decision">
+        <strong>Un solo candidato bastó — el timebox se subutilizó (bien)</strong>
+        <p>qwen2.5:7b fue bueno a la primera; no hizo falta evaluar <code>llama3.1:8b</code>. El riesgo R9 no se materializó. El timebox existía por si la calidad fallaba, no para gastarlo entero.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T6.3 -->
+  <div class="task">
+    <div class="task-header">
+      <div class="task-id">T6.3</div>
+      <div class="task-meta">
+        <div class="task-title">Ollama en ialab (contenedor, modelo pinneado, bind a localhost)</div>
+        <div class="task-desc">Servicio <code style="font-size:0.85em;color:#63b3ed;">ollama</code> en el Compose, imagen pinneada por digest, <code style="font-size:0.85em;">OLLAMA_HOST=127.0.0.1</code> (no expuesto a Tailscale ni internet), volumen persistente para el modelo.</div>
+        <div class="task-chips">
+          <span class="chip chip-infra">Infraestructura</span>
+          <span class="chip chip-time">3 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-18</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> el motor de traducción debe estar disponible y congelado en ialab para que <code>worker-ollama</code> lo consuma localmente, sin exponerlo.</p>
+
+      <div class="section-title">Archivos creados / modificados</div>
+      <ul class="file-list">
+        <li><span class="file-name">deploy/ialab/pull-model.sh</span> <span class="file-new">NEW</span><span class="file-desc">— Pull pinneado (<code>nombre@sha256:…</code>) al servicio Ollama; el modelo queda en el volumen <code>ollama_models</code> y sobrevive recreaciones.</span></li>
+        <li><span class="file-name">deploy/ialab/docker-compose.yml</span><span class="file-desc">— Servicio <code>ollama</code> (<code>network_mode: host</code>, <code>OLLAMA_HOST=127.0.0.1:11434</code> en <code>environment:</code>, GPU reservation) + volumen <code>ollama_models</code>. Imagen <code>ollama/ollama@sha256:bfc9c6d5…</code>.</span></li>
+      </ul>
+
+      <div class="decision">
+        <strong>Ollama bindeado a localhost, no a Tailscale (R7)</strong>
+        <p>Con <code>network_mode: host</code>, <code>worker-ollama</code> alcanza Ollama en <code>127.0.0.1:11434</code> sin exponerlo a la red. Decisión de seguridad deliberada: el worker cruza Tailscale al VPS, pero Ollama nunca sale del host.</p>
+      </div>
+      <div class="decision">
+        <strong>Modelo en volumen → <code>--force-recreate</code> sin re-pull</strong>
+        <p>El modelo vive en <code>ollama_models</code>; recrear el container no lo re-descarga. Smoke test: <code>curl .../api/generate</code> → "Hello world" en 300 ms (warm).</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T6.4 -->
+  <div class="task">
+    <div class="task-header">
+      <div class="task-id">T6.4</div>
+      <div class="task-meta">
+        <div class="task-title">worker-ollama sobre el scaffold: <code style="font-size:0.85em;color:#63b3ed;">translation</code> + <code style="font-size:0.85em;color:#63b3ed;">llm_chat</code></div>
+        <div class="task-desc">Reusa <code style="font-size:0.85em;">worker_base</code> como whisper; <code style="font-size:0.85em;">execute()</code> despacha por service, llama a Ollama y devuelve texto en <code style="font-size:0.85em;color:#b794f4;">jobs.result</code> (sin archivos). Gestor de modelo con idle-unload coordinado al ledger.</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo</span>
+          <span class="chip chip-time">4 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-17</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> segundo worker permanente con el mismo contrato que whisper. <code>translation</code> es lo que Video Crack consume; <code>llm_chat</code> viene "gratis" con el mismo modelo y se expone sin features propias (R5/simplicidad).</p>
+
+      <div class="section-title">Archivos creados / modificados</div>
+      <ul class="file-list">
+        <li><span class="file-name">workers/worker_ollama/__init__.py</span> <span class="file-new">NEW</span><span class="file-desc">— Gestor de modelo (acquire/release/_idle_watcher), <code>_call_ollama()</code> → <code>POST /api/generate</code>, y <code>execute()</code> que arma el prompt por par de idiomas y devuelve <code>{"result": texto}</code>.</span></li>
+        <li><span class="file-name">workers/worker_ollama/__main__.py</span> <span class="file-new">NEW</span><span class="file-desc">— Entry point.</span></li>
+        <li><span class="file-name">workers/pyproject.toml</span><span class="file-desc">— Script <code>worker-ollama = "worker_ollama:main"</code>.</span></li>
+      </ul>
+
+      <div class="decision">
+        <strong>El idle-unload hace DOS cosas, no una</strong>
+        <p>(1) <code>POST /workers/{id}/unload-model</code> libera la reserva en el ledger; (2) llama a Ollama con <code>keep_alive=0</code> para evictar el modelo de la GPU. Solo (1) dejaría el ledger creyendo que la VRAM está libre mientras Ollama la sigue ocupando — la deriva que el ledger existe para prevenir.</p>
+      </div>
+      <div class="decision">
+        <strong><code>_model_loaded: bool</code> en vez del objeto de modelo de whisper</strong>
+        <p>No hay objeto Python que retener — Ollama gestiona la GPU internamente. El gestor solo trackea estado y contador de jobs activos. Fencing (409): lo cubre el scaffold sin código nuevo.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T6.5 -->
+  <div class="task">
+    <div class="task-header">
+      <div class="task-id">T6.5</div>
+      <div class="task-meta">
+        <div class="task-title">Tests de worker-ollama (Ollama mockeado, sin GPU)</div>
+        <div class="task-desc">15 tests parcheando <code style="font-size:0.85em;color:#63b3ed;">httpx.post</code> — mismo patrón que el mock de faster-whisper. Cubren execute, gestor de modelo, errores y el idle watcher.</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo · Tests</span>
+          <span class="chip chip-time">3 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-17</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> convención del proyecto — no hay GPU ni modelo en CI, así que el cliente de Ollama se mockea (como pynvml en el agente y el modelo de whisper). Aísla defectos de lógica de los de integración.</p>
+
+      <div class="section-title">Archivos creados</div>
+      <ul class="file-list">
+        <li><span class="file-name">workers/tests/test_ollama_execute.py</span> <span class="file-new">NEW</span><span class="file-desc">— 15 tests.</span></li>
+      </ul>
+
+      <div class="section-title">Cobertura (15 tests)</div>
+      <ul class="test-list">
+        <li>Gestor de modelo: acquire/release, contadores, <code>_last_released</code></li>
+        <li><code>execute</code> translation devuelve <code>result</code> · idiomas por defecto (es→en) · progreso 10→100</li>
+        <li><code>execute</code> llm_chat devuelve <code>result</code></li>
+        <li>Errores: texto/prompt ausente, servicio desconocido → <code>ValueError</code></li>
+        <li>Libera el modelo en éxito y en excepción</li>
+        <li>Idle watcher: unload tras timeout · skip con job activo · skip antes del timeout</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- T6.6 -->
+  <div class="task">
+    <div class="task-header">
+      <div class="task-id">T6.6</div>
+      <div class="task-meta">
+        <div class="task-title">Calibrar <code style="font-size:0.85em;color:#63b3ed;">min_vram_mb</code> real de translation/llm_chat</div>
+        <div class="task-desc">El <code style="font-size:0.85em;">4000</code> teórico queda por debajo del pico real (4779 MiB). Ajustado a <code style="font-size:0.85em;color:#63b3ed;">5300</code> (pico + margen 11%), con override por env — mismo patrón que T4.9 para whisper.</div>
+        <div class="task-chips">
+          <span class="chip chip-devops">DevOps</span>
+          <span class="chip chip-time">2 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-17</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> el ledger debe reservar un valor anclado en medición real (R6), no el teórico — condición previa para que la convivencia de T6.9 sea fiable.</p>
+
+      <div class="section-title">Archivos modificados</div>
+      <ul class="file-list">
+        <li><span class="file-name">api/internal/jobs/handler.go</span><span class="file-desc">— <code>serviceRequirements["translation"]</code> y <code>["llm_chat"]</code> de 4000 → <strong>5300 MiB</strong>; <code>init()</code> añade <code>MIN_VRAM_TRANSLATION_MB</code> y <code>MIN_VRAM_LLM_CHAT_MB</code> (override sin redeploy de código).</span></li>
+      </ul>
+
+      <div class="decision">
+        <strong>Margen 521 MiB (≈11%), mismo orden que whisper</strong>
+        <p>Pico real 4779 + margen 521 = 5300. Referencia: whisper en producción tiene 440 MiB de margen (5500 − 5060). No requiere migración: constante + env.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T6.7 -->
+  <div class="task">
+    <div class="task-header">
+      <div class="task-id">T6.7</div>
+      <div class="task-meta">
+        <div class="task-title">Video Crack adopta traducción detrás de flag (<code style="font-size:0.85em;color:#63b3ed;">legacy</code>/<code style="font-size:0.85em;color:#63b3ed;">platform</code>/<code style="font-size:0.85em;color:#63b3ed;">both</code>)</div>
+        <div class="task-desc">Mismo patrón de F4.5. La traducción se obtiene con <code style="font-size:0.85em;">create_job + wait</code> y se lee de <code style="font-size:0.85em;color:#b794f4;">job["result"]</code> — sin download, sin método nuevo en el SDK (R5).</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo · Video Crack</span>
+          <span class="chip chip-time">4 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-17</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> Video Crack consume el segundo servicio en producción sin un salto al vacío — el sistema viejo (LM Studio) sigue como respaldo conmutable por flag.</p>
+
+      <div class="section-title">Archivos modificados</div>
+      <ul class="file-list">
+        <li><span class="file-name">video-crack/backend/routers/tradu.py</span><span class="file-desc">— <code>TRANSLATE_MODE</code> (default <code>both</code>), <code>_translate_via_platform()</code>, <code>_submit_translation_background()</code>; en <code>platform</code> no se carga LM Studio. En <code>both</code> la plataforma corre en thread daemon y guarda <code>subtitles.{lang}.platform.vtt</code> para el comparador.</span></li>
+      </ul>
+
+      <div class="decision">
+        <strong>Sin nueva app key ni cuarto método del SDK</strong>
+        <p>Reusa <code>PLATFORM_APP_KEY</code> de F4.5. La traducción es texto, no archivo, así que <code>wait()</code> ya devuelve el <code>result</code> completo — el SDK no creció (R5). El payload usa el mismo formato numerado del legacy, reutilizando el parser existente.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T6.8 -->
+  <div class="task">
+    <div class="task-header">
+      <div class="task-id">T6.8</div>
+      <div class="task-meta">
+        <div class="task-title">Comparador de traducción (legacy vs plataforma)</div>
+        <div class="task-desc">Análogo a <code style="font-size:0.85em;">compare_transcripts.py</code> de F4.5, pero con umbrales más bajos: dos motores de traducción producen frasing distinto pero equivalente.</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo · Video Crack</span>
+          <span class="chip chip-time">3 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-17</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> decidir el switch a <code>platform</code> con evidencia de paridad de calidad sobre subtítulos reales, no por confianza.</p>
+
+      <div class="section-title">Archivos creados / modificados</div>
+      <ul class="file-list">
+        <li><span class="file-name">video-crack/scripts/compare_translations.py</span> <span class="file-new">NEW</span><span class="file-desc">— Comparación 1:1 por índice de segmento, reporte de divergencias materiales, penalización por segmentos faltantes. CLI y módulo importable.</span></li>
+        <li><span class="file-name">video-crack/backend/routers/tradu.py</span><span class="file-desc">— <code>GET /tradu/jobs/{id}/compare-translation/{lang}</code>.</span></li>
+      </ul>
+
+      <div class="decision">
+        <strong>Umbrales más bajos que transcripción</strong>
+        <p>PARIDAD ≥ 70%, REVISAR ≥ 50%, REGRESION &lt; 50% (vs 85%/70% de transcripción). Paráfrasis equivalentes quedan REVISAR; idioma equivocado o texto inventado, REGRESION. Penalización por cobertura: menos segmentos en plataforma escala la similitud hacia abajo.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T6.9 -->
+  <div class="task">
+    <div class="task-header">
+      <div class="task-id">T6.9</div>
+      <div class="task-meta">
+        <div class="task-title">E2E de convivencia del ledger: whisper + ollama simultáneos sin OOM</div>
+        <div class="task-desc">El test clave de la fase — primer test real de dos modelos en la misma GPU bajo el ledger. Pico conjunto <strong>8796 MiB</strong>, sin OOM. Aquí salieron los 3 fixes de integración.</div>
+        <div class="task-chips">
+          <span class="chip chip-devops">DevOps · E2E</span>
+          <span class="chip chip-time">4 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-18</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> la convivencia de modelos que costó diseñar el ledger en F1 se verifica con dos modelos reales — la inversión de F1 paga aquí.</p>
+
+      <div class="section-title">Archivos creados / modificados</div>
+      <ul class="file-list">
+        <li><span class="file-name">deploy/ialab/e2e-convivencia.sh</span> <span class="file-new">NEW</span><span class="file-desc">— Submete transcripción + traducción simultáneas, mide VRAM cada 10s, luego encola un tercero.</span></li>
+        <li><span class="file-name">docs/RUNBOOKS/e2e-f6-results.md</span> <span class="file-new">NEW</span><span class="file-desc">— Resultados de T6.9 y T6.10.</span></li>
+        <li><span class="file-name">deploy/ialab/worker-ollama.env.example</span> <span class="file-new">NEW</span><span class="file-desc">— Plantilla de env del worker.</span></li>
+        <li><span class="file-name">workers/Dockerfile.ollama</span> <span class="file-new">NEW</span><span class="file-desc">— El Dockerfile base solo copiaba <code>worker_echo/</code> (fix abajo).</span></li>
+        <li><span class="file-name">deploy/ialab/docker-compose.yml</span><span class="file-desc">— Servicio <code>worker-ollama</code> (R4/R5: env en <code>environment:</code> + env_file, <code>--force-recreate</code>).</span></li>
+      </ul>
+
+      <div class="section-title">Resultado real (2026-06-18)</div>
+      <table>
+        <tr><th>Criterio de fase</th><th>Estado</th><th>Evidencia</th></tr>
+        <tr><td>Whisper + Ollama a la vez sin OOM</td><td class="pass">✅</td><td>pico 8796 MiB, ambos running</td></tr>
+        <tr><td>Suma de reservas ≤ vram_total − margen</td><td class="pass">✅</td><td>5500 + 5300 = 10800 ≤ 15946</td></tr>
+        <tr><td>Idle-unload libera VRAM del ledger</td><td class="pass">✅</td><td>4793 MiB liberados, unload-model HTTP 200, reserved→0</td></tr>
+        <tr><td>Tercer job que no cabe queda pending (observable)</td><td class="partial">[~]</td><td>math correcto vía DB; no observable con qwen (&lt;1s overlap)</td></tr>
+      </table>
+
+      <div class="bug">
+        <strong>Fix 1 — <code>vram_total_mb=24564</code> habría anulado el ledger en silencio</strong>
+        <p>Las capabilities del worker declaraban 24564 MiB (valor de una RTX 4090, no de la 4070 Ti SUPER de 16 GB), que se <em>upsertea</em> a <code>gpus.vram_total_mb</code>. Con ese techo el ledger nunca bloquearía un tercer job y permitiría reservar 24 GB sobre 16. Corregido a 15946 — el dato corrupto, no el código del ledger, era el bug.</p>
+      </div>
+      <div class="bug">
+        <strong>Fix 2 — <code>OLLAMA_IDLE_TIMEOUT</code> hardcodeado en el compose: el R4 invertido</strong>
+        <p>F4 enseñó "var en <code>.env</code> pero no en el compose → no llega". Aquí el opuesto: <code>OLLAMA_IDLE_TIMEOUT: "600"</code> en <code>environment:</code> <strong>ganaba</strong> sobre el env_file, impidiendo overridearlo. Corregido sacándolo del <code>environment:</code>.</p>
+      </div>
+      <div class="bug">
+        <strong>Fix 3 — <code>worker-ollama</code> necesitaba su propio Dockerfile</strong>
+        <p>El Dockerfile base de <code>workers/</code> solo copia <code>worker_echo/</code> — el build no incluía el código del worker nuevo. Tercer worker, tercer Dockerfile descubierto en el deploy. Creado <code>Dockerfile.ollama</code>.</p>
+      </div>
+
+      <div class="debt">El criterio 3 (tercer job pending observable) queda <code>[~]</code>: con qwen2.5:7b traduciendo en &lt;5s, la ventana donde whisper+ollama tienen reservas activas es &lt;1s — el sistema es demasiado rápido para demostrar su propia salvaguarda. El math está verificado en DB y la lógica de bloqueo ya la prueba el test de carrera de F1. Limitación de demostración, no funcional.</div>
+    </div>
+  </div>
+
+  <!-- T6.10 -->
+  <div class="task">
+    <div class="task-header">
+      <div class="task-id">T6.10</div>
+      <div class="task-meta">
+        <div class="task-title">Corrida de producción: Video Crack traduce subtítulos reales en doble ejecución + recovery</div>
+        <div class="task-desc">Criterio 4 de la fase. Job real EN→ES (123 segmentos) traducido vía plataforma en <code style="font-size:0.85em;">both</code>, comparado con legacy, y recovery mid-job ante caída de Ollama.</div>
+        <div class="task-chips">
+          <span class="chip chip-devops">DevOps · Producción</span>
+          <span class="chip chip-time">4 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-18</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> verificar el cuarto criterio contra producción — Video Crack consume dos servicios de la plataforma (transcripción + traducción).</p>
+
+      <div class="section-title">Escenarios (2026-06-18)</div>
+      <table>
+        <tr><th>Escenario</th><th>Estado</th><th>Evidencia</th></tr>
+        <tr><td>Doble ejecución sobre corpus real</td><td class="pass">✅</td><td>job <code>4eca1cb2</code> · 123 segs · <code>subtitles.es.platform.vtt</code> generado · legacy intacto</td></tr>
+        <tr><td>Comparación legacy vs plataforma</td><td class="partial">REVISAR</td><td>59.1% — diferencia de <em>granularidad</em>, no de contenido</td></tr>
+        <tr><td>Recovery mid-job (caída de Ollama)</td><td class="pass">✅</td><td>running→pending (retry=1) en &lt;5s → done a t+30s</td></tr>
+      </table>
+
+      <div class="decision">
+        <strong>REVISAR no es regresión: la plataforma traduce mejor</strong>
+        <p>El legacy traduce fragmento a fragmento (oraciones cortadas); la plataforma traduce el contexto completo y produce oraciones completas. Ej.: <em>"The intermediate part, which is where I am"</em> → legacy <em>"La parte intermedia, en"</em> (truncado) vs plataforma <em>"El medio en el que me encuentro,"</em>. El comparador penaliza la granularidad, no la calidad.</p>
+      </div>
+      <div class="debt">Hallazgo: videos &gt;200 segmentos (~7000 tokens) hacen que qwen2.5:7b devuelva un <em>summary</em> en vez de traducciones numeradas. El video de 123 segs es el límite confiable en un solo prompt → chunking necesario antes del pipeline de F7. El reboot completo de ialab no se ejecutó (terminaría la sesión); el chaos del container de Ollama cubre el mismo path de recovery.</div>
+    </div>
+  </div>
+
+  <!-- T6.11 -->
+  <div class="task">
+    <div class="task-header">
+      <div class="task-id">T6.11</div>
+      <div class="task-meta">
+        <div class="task-title">Cierre de fase y documentación</div>
+        <div class="task-desc">CLAUDE.md, backlog, changelog y runbook actualizados. F6 cerrada, F7 siguiente. Sin migraciones → runbook SQL de respaldo sigue válido.</div>
+        <div class="task-chips">
+          <span class="chip chip-doc">Documentación</span>
+          <span class="chip chip-time">1 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-18</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <div class="section-title">Archivos modificados</div>
+      <ul class="file-list">
+        <li><span class="file-name">CLAUDE.md (proyecto)</span><span class="file-desc">— "Fase activa": F6 cerrada (2026-06-18) → F7; postura de producción con worker-ollama y <code>TRANSLATE_MODE=both</code>.</span></li>
+        <li><span class="file-name">docs/BACKLOG/f6.md</span><span class="file-desc">— Criterios marcados <code>[x]</code> con evidencia; criterio 3 como <code>[~]</code>.</span></li>
+        <li><span class="file-name">docs/CHANGELOG/f6.md</span><span class="file-desc">— Resultados reales de T6.10 + cierre T6.11.</span></li>
+        <li><span class="file-name">docs/RUNBOOKS/e2e-f6-results.md</span><span class="file-desc">— Escenarios 1–3 rellenados con evidencia.</span></li>
+      </ul>
+      <div class="decision">
+        <strong>Sin migraciones en F6</strong>
+        <p>Última migración sigue siendo <code>0003_worker_metrics_hourly</code>. <code>translation</code>/<code>llm_chat</code> y la columna <code>result</code> ya existían — el runbook SQL <code>f4.5-ops-without-dashboard.md</code> sigue válido sin tocar.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- RETROSPECTIVA -->
+  <h2>Retrospectiva — aprendizajes clave</h2>
+
+  <div class="retro-grid">
+    <div class="retro-card">
+      <h3 class="good">Lo que funcionó bien</h3>
+      <ul>
+        <li>El tooling de deploy a ialab (T6.1) que F4/F4.5 difirieron, por fin construido y usado — rsync + guarda de disco + <code>--force-recreate</code> + verificación de registro</li>
+        <li>Reusar el patrón de F4.5 al pie de la letra: flag de 3 posiciones, comparador, app key reusada, <code>result</code> vía <code>wait()</code> sin cuarto método</li>
+        <li>Calibrar VRAM en el timebox (T6.2) <em>antes</em> de escribir el worker → el <code>5300</code> del ledger fue correcto desde el primer deploy</li>
+        <li>Aceptar el criterio 3 como correcto-no-observable en vez de inventar un modelo lento artificial para el e2e</li>
+      </ul>
+    </div>
+    <div class="retro-card">
+      <h3 class="lesson">Lo que aprendimos del sistema real</h3>
+      <ul>
+        <li>La convivencia fue mucho más holgada de lo que el plan temía: 8796 MiB pico sobre 15946 (~7 GB de margen), gracias a la calibración de whisper en F4</li>
+        <li>El idle-unload tiene que hacer dos cosas: liberar el ledger Y pedir a Ollama <code>keep_alive=0</code> — solo una deja deriva ledger↔realidad</li>
+        <li>Parar el container de Ollama ≡ reiniciar el nodo para el contrato de recovery (running→pending→re-claim, ~30s)</li>
+        <li>El ledger es por-job, no por-modelo: por eso el criterio 3 no es observable con modelos rápidos</li>
+      </ul>
+    </div>
+    <div class="retro-card">
+      <h3 class="risk">Lo que más sorprendió</h3>
+      <ul>
+        <li>Un dato corrupto (<code>vram_total_mb=24564</code>) habría anulado toda la seguridad anti-OOM en silencio — el código del ledger estaba bien, el dato no</li>
+        <li>El R4 muerde en las dos direcciones: F4 fue "no llega al contenedor"; F6 fue "el compose bloquea el override del env file"</li>
+        <li>El comparador penaliza la salida <em>mejor</em>: REVISAR 59.1% por granularidad, no por regresión</li>
+        <li>El sistema es demasiado rápido (&lt;1s overlap) para demostrar su propia salvaguarda de VRAM</li>
+      </ul>
+    </div>
+    <div class="retro-card">
+      <h3 class="risk">Postura de producción al cerrar F6</h3>
+      <ul>
+        <li>worker-ollama en ialab: <code>qwen2.5:7b @ 845dbda0…</code>, <code>MIN_VRAM_TRANSLATION_MB=5300</code></li>
+        <li>Ledger ialab: <code>vram_total_mb=15946</code>; whisper 5500 + translation 5300 = 10800 máx reservado</li>
+        <li>Video Crack: <code>TRANSLATE_MODE=both</code> (sistema viejo activo como respaldo; switch a <code>platform</code> es F7)</li>
+        <li>Convivencia whisper+ollama verificada (8796 MiB pico, sin OOM); recovery mid-job confirmado</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- SIGUIENTE FASE -->
+  <h2>Siguiente fase — F7: worker-tts + migración completa de Video Crack</h2>
+
+  <div style="background:#1a1f2e;border:1px solid #2d3748;border-radius:10px;padding:1.4rem 1.6rem;margin-top:0.5rem;">
+    <p style="font-size:0.85rem;color:#a0aec0;margin-bottom:0.8rem;">Con F6 cerrada, Video Crack consume dos de sus tres servicios sobre la plataforma (transcripción + traducción). F7 añade el tercer y último servicio — síntesis de voz — completa el pipeline en plataforma y <strong>apaga el sistema viejo</strong>: el criterio de éxito de todo el MVP.</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;font-size:0.82rem;margin-top:0.4rem;">
+      <div style="color:#a0aec0;">→ worker-tts (XTTS o Higgs, timebox de 2 días) sobre el scaffold</div>
+      <div style="color:#a0aec0;">→ Primer test real de <strong>3 modelos</strong> simultáneos bajo el ledger (whisper+ollama+tts)</div>
+      <div style="color:#a0aec0;">→ Chunking de subtítulos &gt;200 segs antes del pipeline largo</div>
+      <div style="color:#a0aec0;">→ Validar <code>vram_total_mb</code> en el registro (evitar otro 24564)</div>
+      <div style="color:#a0aec0;">→ Pipeline completo encadenado con <code>workflow_id</code> → switch a <code>platform</code></div>
+      <div style="color:#a0aec0;">→ Apagar el sistema viejo de Video Crack — fin del MVP 🏁</div>
+    </div>
+  </div>
+
+</div>
+
+<div class="footer">
+  Generado el 2026-06-18 &mdash; AI Worker Platform feature/f6 &mdash; docs/HTML/f6-implementacion.html
+</div>
+
+<script>
+  document.querySelectorAll('.task-header').forEach(header => {
+    header.addEventListener('click', (e) => {
+      e.stopPropagation();
+      header.closest('.task').classList.toggle('open');
+    });
+  });
+  document.querySelectorAll('.task-body').forEach(body => {
+    body.addEventListener('click', (e) => e.stopPropagation());
+  });
+</script>
+
+</body>
+</html>
