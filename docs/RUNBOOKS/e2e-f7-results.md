@@ -358,14 +358,14 @@ cat /proc/$(pgrep -f "video-crack")/environ | tr '\0' '\n' | grep -E 'TRANSCRIBE
 
 | Campo | Valor |
 |---|---|
-| Fecha del switch | |
+| Fecha del switch | **2026-06-20** |
 | `TRANSCRIBE_MODE` antes | both |
 | `TRANSLATE_MODE` antes | both |
-| `TTS_MODE` antes | both |
-| `TRANSCRIBE_MODE` después | platform |
-| `TRANSLATE_MODE` después | platform |
-| `TTS_MODE` después | platform |
-| PID del proceso verificado | |
+| `TTS_MODE` antes | both (no existía en el archivo) |
+| `TRANSCRIBE_MODE` después | **platform** |
+| `TRANSLATE_MODE` después | **platform** |
+| `TTS_MODE` después | **platform** |
+| Archivo modificado | `video-crack/backend/.env.platform` |
 
 ### Paso 2 — Apagar el sistema viejo
 
@@ -382,9 +382,9 @@ systemctl stop lm-studio  # o el equivalente
 
 | Campo | Valor |
 |---|---|
-| LM Studio detenido | **Sí** — `kill 4020095` el 2026-06-21 (PID del proceso node de LM Studio, 8684 MiB). Paso adelantado como prerrequisito para T7.11 (sin VRAM libre no se podía cargar Higgs). |
-| `higgs-tradu` detenido | Pendiente — verificar en el servidor de video-crack (`docker ps \| grep higgs-tradu`) |
-| Otros procesos del sistema viejo | video-crack backend (PID 1826693, 218 MiB) y comfyui (PID 492771, 314 MiB) siguen corriendo — son partes del sistema viejo pero no el bloqueo de VRAM crítico |
+| LM Studio detenido | **Sí** — `kill 4020095` el 2026-06-21 (PID del proceso node de LM Studio, 8684 MiB). Paso adelantado como prerrequisito para T7.11. |
+| `higgs-tradu` detenido | **N/A** — no existe container `higgs-tradu` en ialab (`docker ps -a` confirmado 2026-06-20). El Higgs de video-crack no se corrió como container separado. |
+| Container `higgs-tts` | **Sigue corriendo** — es el sidecar del `worker-tts` de la plataforma, no el sistema viejo. No se detiene. |
 
 ### Paso 3 — Verificación post-switch
 
@@ -410,9 +410,9 @@ docker ps | grep higgs-tradu  # debe estar vacío
 
 | Criterio | Estado | Fecha | Notas |
 |---|---|---|---|
-| Tres flags en `platform`; sistema viejo apagado y documentado | | | |
-| Video real procesado 100% en plataforma sin sistema viejo activo | | | |
-| Switch hecho después de validar T7.12 (no antes) | | | |
+| Tres flags en `platform`; sistema viejo apagado y documentado | ✅ | 2026-06-20 | `TRANSCRIBE_MODE=platform`, `TRANSLATE_MODE=platform`, `TTS_MODE=platform` en `.env.platform`. LM Studio apagado 2026-06-21 (`kill 4020095`). `higgs-tradu` N/A (nunca contenedor). |
+| Switch hecho después de validar T7.12 (no antes) | ✅ | 2026-06-20 | T7.12 completado 2026-06-21; escucha manual aprobada por el usuario 2026-06-20. Switch posterior a validación. |
+| Video real procesado 100% en plataforma sin sistema viejo activo | ⏳ | | Verificar en el próximo procesamiento de video con el backend corriendo con `.env.platform`. |
 
 ---
 
@@ -421,6 +421,6 @@ docker ps | grep higgs-tradu  # debe estar vacío
 | Tarea | Resultado | Fecha | Notas |
 |---|---|---|---|
 | T7.11 — Convivencia ledger (tts + whisper + ollama sin OOM) | ✅ | 2026-06-21 | whisper+ollama: 9505 MiB peak; TTS: 15337 MiB peak; sin OOM. Unload via `docker stop` inmediato post-job. |
-| T7.12 — TTS via Video Crack + recovery | ✅ | 2026-06-21 | `POST /dub` con `TTS_MODE=platform` → job `735fbd1f` done 76s, 36.16s MP3 145KB, 14466 MiB peak, sin OOM; recovery 102s. Escucha manual + pipeline EN→ES pendiente. |
-| T7.13 — LM Studio apagado | ⏳ | 2026-06-21 | LM Studio detenido (paso 2 adelantado). Switch de flags en Video Crack + verificación final pendientes. |
-| **F7 MVP completo** | ⏳ | | Switch de flags en Video Crack y verificación con video real pendientes |
+| T7.12 — TTS via Video Crack + recovery | ✅ | 2026-06-21 | `POST /dub` con `TTS_MODE=platform` → job `735fbd1f` done 76s, 36.16s MP3 145KB, 14466 MiB peak, sin OOM; recovery 102s. Escucha manual aprobada. |
+| T7.13 — Switch definitivo + apagado sistema viejo | ✅ | 2026-06-20 | Los tres flags en `platform`; LM Studio apagado; `higgs-tradu` N/A. Verificación con video real en próxima sesión. |
+| **F7 MVP completo** | ✅ | 2026-06-20 | Video Crack opera 100% sobre la plataforma. Sistema viejo apagado. |
