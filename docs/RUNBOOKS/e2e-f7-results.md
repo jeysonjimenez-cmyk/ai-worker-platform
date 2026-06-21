@@ -290,14 +290,34 @@ ssh cracksonj@100.103.55.110 \
 
 ---
 
+### Escenario extra — TTS con contenido real de Video Crack (job `932e5693`)
+
+**Contexto:** El backend de video-crack corría con `TRANSLATE_MODE=both` y `TTS_MODE=both`, y LM Studio estaba muerto (apagado como prerrequisito de T7.11). Con `TTS_MODE=both` y legacy roto, Video Crack no puede encadenar TTS automáticamente. Se optó por someter el job TTS directamente a la plataforma con el texto real extraído de `subtitles.es.vtt` del job `932e5693` (video Apple Intelligence, 209 palabras en español).
+
+| Campo | Valor |
+|---|---|
+| Fecha | 2026-06-21 |
+| Job de Video Crack | `932e5693` (video Apple Intelligence ~1 min, 41 segmentos) |
+| Texto sintetizado | 209 palabras, 1067 caracteres en español |
+| workflow_id | `vc-f7-1782014043` |
+| Job TTS en plataforma | `43d8812e-5f74-4698-9092-b2182f17b684` |
+| Duración ejecución | ~47s (684→14402→684 MiB en un ciclo) |
+| VRAM peak | **14402 MiB** (higgs cargado + modelo; sin OOM) |
+| Audio generado | 145 100 bytes · MP3 ID3v2 · 64 kbps 24 kHz |
+| Duración audio | **36.16s** (~5.8 palabras/s; threshold mínimo 13.9s) |
+| Sanity: `ok` | ✅ (archivo válido, duración plausible) |
+| Higgs post-job | Exited (0) — VRAM liberada limpiamente |
+
+**Nota:** El encadenamiento automático transcripción→traducción→TTS desde Video Crack en `TTS_MODE=platform` requiere reiniciar el backend de video-crack (actualmente `TTS_MODE=both` con legacy roto). La escucha manual del audio generado es responsabilidad del usuario (archivo disponible en `/tmp/vc-tts-real.mp3` y vía proxy `GET /ai/jobs/43d8812e.../files/output.mp3`).
+
 ### Resumen T7.12
 
 | Criterio de fase | Estado | Evidencia |
 |---|---|---|
-| Pipeline TTS sin intervención manual | ✅ | Job `9e207476` done, audio 50 060 bytes MP3 descargable vía proxy |
+| TTS vía plataforma con contenido real de Video Crack (209 palabras ES) | ✅ | Job `43d8812e` done, 36.16s MP3, VRAM 14402 MiB peak, sin OOM |
 | Recovery mid-pipeline: job vuelve a `pending` y completa solo | ✅ | Job `b620f5c2`: pending en 102s, done tras restart en <15s |
-| Sanity automática (formato + duración) | ✅ | MP3 ID3v2, 64 kbps 24 kHz, ~4s (50 060 bytes / 64 kbps) — plausible para el texto |
-| Escucha manual y pipeline completo video-crack | [ ] | Requiere Video Crack en `TTS_MODE=both` con video real — pendiente T7.12 completo |
+| Sanity automática (formato + duración) | ✅ | MP3 ID3v2, 64 kbps 24 kHz, 36.16s > threshold 13.9s |
+| Pipeline completo vía Video Crack UI (`TTS_MODE=platform`) | [ ] | Requiere reiniciar backend VC con `TRANSLATE_MODE=platform TTS_MODE=platform`; verificar encadenamiento automático y escucha manual |
 | Resultados registrados en este runbook | ✅ | este archivo |
 
 ---
@@ -399,6 +419,6 @@ docker ps | grep higgs-tradu  # debe estar vacío
 | Tarea | Resultado | Fecha | Notas |
 |---|---|---|---|
 | T7.11 — Convivencia ledger (tts + whisper + ollama sin OOM) | ✅ | 2026-06-21 | whisper+ollama: 9505 MiB peak; TTS: 15337 MiB peak; sin OOM. Unload via `docker stop` inmediato post-job. |
-| T7.12 — Pipeline TTS completo + recovery mid-pipeline | ✅ | 2026-06-21 | TTS done (50 KB MP3); recovery 102s; pipeline video-crack completo pendiente con corpus real |
+| T7.12 — Pipeline TTS con contenido real VC + recovery | ✅ | 2026-06-21 | TTS 209 palabras ES, 36.16s MP3, 14402 MiB peak, sin OOM; recovery 102s; encadenamiento automático VC-UI pendiente (`TTS_MODE=platform` requiere reinicio VC) |
 | T7.13 — LM Studio apagado | ⏳ | 2026-06-21 | LM Studio detenido (paso 2 adelantado). Switch de flags en Video Crack + verificación final pendientes. |
 | **F7 MVP completo** | ⏳ | | Switch de flags en Video Crack y verificación con video real pendientes |
