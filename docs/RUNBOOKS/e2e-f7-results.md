@@ -290,34 +290,36 @@ ssh cracksonj@100.103.55.110 \
 
 ---
 
-### Escenario extra — TTS con contenido real de Video Crack (job `932e5693`)
+### Escenario principal — TTS via Video Crack `POST /dub` (TTS_MODE=platform)
 
-**Contexto:** El backend de video-crack corría con `TRANSLATE_MODE=both` y `TTS_MODE=both`, y LM Studio estaba muerto (apagado como prerrequisito de T7.11). Con `TTS_MODE=both` y legacy roto, Video Crack no puede encadenar TTS automáticamente. Se optó por someter el job TTS directamente a la plataforma con el texto real extraído de `subtitles.es.vtt` del job `932e5693` (video Apple Intelligence, 209 palabras en español).
+**Contexto:** Backend de video-crack reiniciado con `TRANSLATE_MODE=platform TTS_MODE=platform TRANSCRIBE_MODE=both`. Se activó el dob de TTS para el job `932e5693` mediante `POST /tradu/jobs/932e5693/subtitles/es/dub` — Video Crack llama a `_tts_via_platform()` que somete el job a la plataforma, descarga el audio y lo guarda como `dubbed_es.mp3`.
 
 | Campo | Valor |
 |---|---|
 | Fecha | 2026-06-21 |
-| Job de Video Crack | `932e5693` (video Apple Intelligence ~1 min, 41 segmentos) |
+| Job de Video Crack | `932e5693` (video Apple Intelligence ~2 min, 41 segmentos en ES) |
+| Trigger | `POST http://127.0.0.1:8000/tradu/jobs/932e5693/subtitles/es/dub` |
 | Texto sintetizado | 209 palabras, 1067 caracteres en español |
-| workflow_id | `vc-f7-1782014043` |
-| Job TTS en plataforma | `43d8812e-5f74-4698-9092-b2182f17b684` |
-| Duración ejecución | ~47s (684→14402→684 MiB en un ciclo) |
-| VRAM peak | **14402 MiB** (higgs cargado + modelo; sin OOM) |
-| Audio generado | 145 100 bytes · MP3 ID3v2 · 64 kbps 24 kHz |
-| Duración audio | **36.16s** (~5.8 palabras/s; threshold mínimo 13.9s) |
-| Sanity: `ok` | ✅ (archivo válido, duración plausible) |
-| Higgs post-job | Exited (0) — VRAM liberada limpiamente |
+| Job TTS en plataforma | `735fbd1f-5529-49fe-a58a-71a35b29f648` |
+| Worker | `w-tts-ialab` |
+| Duración ejecución end-to-end | 76s (0s→14466 MiB→461 MiB en un ciclo) |
+| VRAM peak | **14466 MiB** (higgs cargado + síntesis + descarga; sin OOM) |
+| Archivo generado | `dubbed_es.mp3` — 145 100 bytes · MP3 ID3v2 · 64 kbps 24 kHz |
+| Duración audio | **36.16s** (5.8 palabras/s; threshold mínimo 13.9s ✅) |
+| Sanity interna (video-crack) | ✅ `_sanity_check_tts_output` pasó — dub status = "done" |
+| Higgs post-job | `Exited (0)` — VRAM liberada limpiamente (461 MiB residual = baseline) |
 
-**Nota:** El encadenamiento automático transcripción→traducción→TTS desde Video Crack en `TTS_MODE=platform` requiere reiniciar el backend de video-crack (actualmente `TTS_MODE=both` con legacy roto). La escucha manual del audio generado es responsabilidad del usuario (archivo disponible en `/tmp/vc-tts-real.mp3` y vía proxy `GET /ai/jobs/43d8812e.../files/output.mp3`).
+**Archivo para escucha manual:** `/home/cracksonj/PROJECTS/video-crack/tradu_jobs/932e5693/dubbed_es.mp3`
 
 ### Resumen T7.12
 
 | Criterio de fase | Estado | Evidencia |
 |---|---|---|
-| TTS vía plataforma con contenido real de Video Crack (209 palabras ES) | ✅ | Job `43d8812e` done, 36.16s MP3, VRAM 14402 MiB peak, sin OOM |
+| TTS vía Video Crack con contenido real (209 palabras ES) | ✅ | `POST /dub` → job `735fbd1f` done en 76s, 36.16s MP3, 14466 MiB peak, sin OOM |
 | Recovery mid-pipeline: job vuelve a `pending` y completa solo | ✅ | Job `b620f5c2`: pending en 102s, done tras restart en <15s |
-| Sanity automática (formato + duración) | ✅ | MP3 ID3v2, 64 kbps 24 kHz, 36.16s > threshold 13.9s |
-| Pipeline completo vía Video Crack UI (`TTS_MODE=platform`) | [ ] | Requiere reiniciar backend VC con `TRANSLATE_MODE=platform TTS_MODE=platform`; verificar encadenamiento automático y escucha manual |
+| Sanity automática (formato + duración) | ✅ | MP3 ID3v2, 64 kbps 24 kHz, 36.16s > threshold 13.9s; sanity interna vc = ok |
+| Pipeline con traducción (EN→ES) encadenado automáticamente | [ ] | Video `932e5693` es ES→ES (sin traducción). Pipeline completo con traducción real pendiente — requiere video EN con `TRANSCRIBE_MODE=platform` + `PUBLIC_BASE_URL` configurado |
+| Escucha manual del audio | [ ] | Archivo en `tradu_jobs/932e5693/dubbed_es.mp3` — pendiente revisión usuario |
 | Resultados registrados en este runbook | ✅ | este archivo |
 
 ---
@@ -419,6 +421,6 @@ docker ps | grep higgs-tradu  # debe estar vacío
 | Tarea | Resultado | Fecha | Notas |
 |---|---|---|---|
 | T7.11 — Convivencia ledger (tts + whisper + ollama sin OOM) | ✅ | 2026-06-21 | whisper+ollama: 9505 MiB peak; TTS: 15337 MiB peak; sin OOM. Unload via `docker stop` inmediato post-job. |
-| T7.12 — Pipeline TTS con contenido real VC + recovery | ✅ | 2026-06-21 | TTS 209 palabras ES, 36.16s MP3, 14402 MiB peak, sin OOM; recovery 102s; encadenamiento automático VC-UI pendiente (`TTS_MODE=platform` requiere reinicio VC) |
+| T7.12 — TTS via Video Crack + recovery | ✅ | 2026-06-21 | `POST /dub` con `TTS_MODE=platform` → job `735fbd1f` done 76s, 36.16s MP3 145KB, 14466 MiB peak, sin OOM; recovery 102s. Escucha manual + pipeline EN→ES pendiente. |
 | T7.13 — LM Studio apagado | ⏳ | 2026-06-21 | LM Studio detenido (paso 2 adelantado). Switch de flags en Video Crack + verificación final pendientes. |
 | **F7 MVP completo** | ⏳ | | Switch de flags en Video Crack y verificación con video real pendientes |
