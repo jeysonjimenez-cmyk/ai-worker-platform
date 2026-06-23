@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fase 7 — worker-tts + migración completa: Video Crack 100 % en plataforma 🏁</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f1117; color: #e2e8f0; line-height: 1.6; }
+
+    /* HEADER */
+    .header { background: linear-gradient(135deg, #1a1f2e 0%, #0f1117 100%); border-bottom: 1px solid #2d3748; padding: 2.5rem 3rem; }
+    .header h1 { font-size: 1.7rem; font-weight: 800; color: #f7fafc; letter-spacing: -0.02em; }
+    .header .subtitle { font-size: 0.95rem; color: #718096; margin-top: 0.3rem; }
+    .badges { display: flex; gap: 0.5rem; margin-top: 0.9rem; flex-wrap: wrap; }
+    .badge { display: inline-block; padding: 0.2rem 0.7rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
+    .badge-green { background: #1a4731; color: #68d391; border: 1px solid #276749; }
+    .badge-blue { background: #1a2744; color: #63b3ed; border: 1px solid #2b4c8c; }
+    .badge-purple { background: #2d1f4e; color: #b794f4; border: 1px solid #553c9a; }
+    .badge-orange { background: #3d2200; color: #f6ad55; border: 1px solid #7b4d00; }
+    .badge-teal { background: #1a3535; color: #4fd1c5; border: 1px solid #2c6060; }
+    .badge-gold { background: #3d2e00; color: #f6e05e; border: 1px solid #7b5c00; }
+
+    /* LAYOUT */
+    .container { max-width: 980px; margin: 0 auto; padding: 2rem 3rem 4rem; }
+
+    /* RESUMEN GRID */
+    .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin: 2rem 0; }
+    .card { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 10px; padding: 1.2rem 1.4rem; }
+    .card .label { font-size: 0.72rem; color: #718096; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.4rem; }
+    .card .value { font-size: 1.6rem; font-weight: 800; color: #68d391; }
+    .card .sub { font-size: 0.78rem; color: #a0aec0; margin-top: 0.15rem; }
+
+    /* ARQUITECTURA */
+    .arch-diagram { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 10px; padding: 1.5rem 2rem; margin: 1.5rem 0; font-family: 'Fira Code', monospace; font-size: 0.82rem; line-height: 1.8; color: #a0aec0; }
+    .arch-diagram .hl { color: #68d391; font-weight: 600; }
+    .arch-diagram .hl2 { color: #63b3ed; font-weight: 600; }
+    .arch-diagram .hl3 { color: #b794f4; font-weight: 600; }
+    .arch-diagram .hl4 { color: #f6e05e; font-weight: 600; }
+    .arch-diagram .dim { color: #4a5568; }
+
+    /* TASK CARDS */
+    h2 { font-size: 1rem; font-weight: 700; color: #a0aec0; margin: 2.5rem 0 1rem; text-transform: uppercase; letter-spacing: 0.08em; padding-bottom: 0.4rem; border-bottom: 1px solid #2d3748; }
+
+    .task { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 10px; margin-bottom: 1.2rem; overflow: hidden; }
+    .task-header { display: flex; align-items: flex-start; gap: 1rem; padding: 1.1rem 1.4rem; cursor: pointer; user-select: none; }
+    .task-header:hover { background: #1e2535; }
+    .task-id { font-size: 0.72rem; font-weight: 700; color: #4a5568; font-family: monospace; white-space: nowrap; padding-top: 0.1rem; }
+    .task-meta { flex: 1; }
+    .task-title { font-size: 0.95rem; font-weight: 700; color: #f7fafc; }
+    .task-desc { font-size: 0.82rem; color: #718096; margin-top: 0.2rem; }
+    .task-chips { display: flex; gap: 0.4rem; margin-top: 0.5rem; flex-wrap: wrap; }
+    .chip { font-size: 0.7rem; padding: 0.15rem 0.55rem; border-radius: 4px; font-weight: 500; }
+    .chip-dev { background: #1a2744; color: #63b3ed; }
+    .chip-infra { background: #2d1f4e; color: #b794f4; }
+    .chip-devops { background: #3d2200; color: #f6ad55; }
+    .chip-doc { background: #1a3a2a; color: #68d391; }
+    .chip-sec { background: #3d1a1a; color: #fc8181; }
+    .chip-time { background: #161b27; color: #718096; border: 1px solid #2d3748; }
+    .task-status { font-size: 0.75rem; color: #68d391; font-weight: 700; white-space: nowrap; padding-top: 0.1rem; }
+    .task-status.partial { color: #f6ad55; }
+    .task-toggle { font-size: 0.75rem; color: #4a5568; margin-left: 0.5rem; padding-top: 0.1rem; transition: transform 0.2s; }
+    .task.open .task-toggle { transform: rotate(180deg); }
+
+    .task-body { padding: 0 1.4rem 1.2rem; border-top: 1px solid #1e2535; display: none; }
+    .task.open .task-body { display: block; }
+    .task-body p { font-size: 0.85rem; color: #a0aec0; margin: 1rem 0 0.6rem; }
+    .task-body p strong { color: #e2e8f0; }
+
+    /* SECTIONS WITHIN TASK */
+    .section { margin-bottom: 1rem; }
+    .section-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; color: #4a5568; margin-bottom: 0.5rem; margin-top: 0.8rem; }
+
+    /* FILES */
+    .file-list { list-style: none; }
+    .file-list li { display: flex; align-items: flex-start; gap: 0.6rem; padding: 0.4rem 0; border-bottom: 1px solid #161b27; font-size: 0.82rem; }
+    .file-list li:last-child { border-bottom: none; }
+    .file-name { font-family: monospace; color: #63b3ed; white-space: nowrap; flex-shrink: 0; }
+    .file-desc { color: #a0aec0; }
+    .file-new { font-size: 0.65rem; font-weight: 700; color: #68d391; background: #1a3a2a; border: 1px solid #276749; padding: 0.05rem 0.35rem; border-radius: 3px; margin-left: 0.3rem; flex-shrink: 0; }
+
+    /* TESTS */
+    .test-list { list-style: none; }
+    .test-list li { display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.3rem 0; font-size: 0.82rem; color: #a0aec0; }
+    .test-list li::before { content: '✓'; color: #68d391; font-weight: 700; flex-shrink: 0; margin-top: 0.05rem; }
+
+    /* DECISIONS */
+    .decision { background: #161b27; border-left: 3px solid #4299e1; border-radius: 0 6px 6px 0; padding: 0.65rem 1rem; margin: 0.4rem 0; font-size: 0.82rem; }
+    .decision strong { color: #63b3ed; display: block; margin-bottom: 0.15rem; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.03em; }
+    .decision p { color: #a0aec0; margin: 0; }
+
+    /* DEBT */
+    .debt { background: #2d1800; border-left: 3px solid #f6ad55; border-radius: 0 6px 6px 0; padding: 0.65rem 1rem; margin: 0.4rem 0; font-size: 0.82rem; color: #fbd38d; }
+
+    /* BUG / ISSUE FOUND */
+    .bug { background: #2d1a1a; border-left: 3px solid #fc8181; border-radius: 0 6px 6px 0; padding: 0.65rem 1rem; margin: 0.4rem 0; font-size: 0.82rem; }
+    .bug strong { color: #fc8181; display: block; margin-bottom: 0.15rem; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.03em; }
+    .bug p { color: #fbd38d; margin: 0; }
+
+    /* TABLE */
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin: 0.5rem 0; }
+    th { background: #161b27; color: #718096; padding: 0.45rem 0.8rem; text-align: left; font-weight: 600; border-bottom: 1px solid #2d3748; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    td { padding: 0.45rem 0.8rem; border-bottom: 1px solid #161b27; color: #e2e8f0; vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+    td code { font-family: monospace; background: #161b27; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.78rem; color: #63b3ed; }
+    .pass { color: #68d391; font-weight: 600; }
+    .partial { color: #f6ad55; font-weight: 600; }
+    .fail { color: #fc8181; font-weight: 600; }
+
+    /* RETRO SECTION */
+    .retro-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
+    .retro-card { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 8px; padding: 1.1rem 1.3rem; }
+    .retro-card h3 { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.6rem; }
+    .retro-card h3.good { color: #68d391; }
+    .retro-card h3.risk { color: #f6ad55; }
+    .retro-card h3.lesson { color: #b794f4; }
+    .retro-card ul { list-style: none; }
+    .retro-card ul li { font-size: 0.82rem; color: #a0aec0; padding: 0.25rem 0; border-bottom: 1px solid #1e2535; }
+    .retro-card ul li:last-child { border-bottom: none; }
+    .retro-card ul li::before { content: '→ '; color: #4a5568; }
+
+    /* MVP BANNER */
+    .mvp-banner { background: linear-gradient(135deg, #1a3535 0%, #1a2744 100%); border: 1px solid #276749; border-radius: 12px; padding: 1.5rem 2rem; margin: 2rem 0; display: flex; align-items: center; gap: 1.5rem; }
+    .mvp-banner .mvp-icon { font-size: 2.5rem; line-height: 1; }
+    .mvp-banner h3 { font-size: 1.05rem; font-weight: 800; color: #68d391; margin-bottom: 0.25rem; }
+    .mvp-banner p { font-size: 0.85rem; color: #a0aec0; }
+
+    /* FOOTER */
+    .footer { text-align: center; padding: 2rem; font-size: 0.75rem; color: #4a5568; border-top: 1px solid #1a1f2e; margin-top: 3rem; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Fase 7 🏁 — worker-tts + Video Crack 100 % en plataforma</h1>
+  <div class="subtitle">Implementación completa · AI Worker Platform · feature/f7 · MVP cerrado</div>
+  <div class="badges">
+    <span class="badge badge-green">✅ Cerrada 2026-06-21</span>
+    <span class="badge badge-blue">14 tareas + 3 bugs latentes encontrados al switch</span>
+    <span class="badge badge-purple">Higgs Audio v3 · bosonai/higgs-audio-v3-tts-4b</span>
+    <span class="badge badge-orange">TTS 14720 MiB — exclusión mutua con whisper/ollama</span>
+    <span class="badge badge-gold">🏁 MVP: sistema viejo apagado</span>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- MVP BANNER -->
+  <div class="mvp-banner">
+    <div class="mvp-icon">🏁</div>
+    <div>
+      <h3>MVP completo — F0–F7 cerradas</h3>
+      <p>Video Crack opera sus tres servicios (transcripción, traducción, TTS) 100 % sobre la plataforma. LM Studio apagado. Sistema viejo desactivado. El objetivo original del proyecto se cumplió en esta fase.</p>
+    </div>
+  </div>
+
+  <!-- RESUMEN NUMÉRICO -->
+  <div class="summary-grid">
+    <div class="card">
+      <div class="label">VRAM TTS (calibrada)</div>
+      <div class="value">14720<span style="font-size:0.9rem;"> MiB</span></div>
+      <div class="sub">teórico: 2000 MiB — off 7× sin medir</div>
+    </div>
+    <div class="card">
+      <div class="label">Tests añadidos</div>
+      <div class="value">18</div>
+      <div class="sub">17 worker-tts + 1 integración Go (conflicto VRAM)</div>
+    </div>
+    <div class="card">
+      <div class="label">Duración job real</div>
+      <div class="value">76<span style="font-size:0.9rem;">s</span></div>
+      <div class="sub">209 palabras · 36s audio · job done en producción</div>
+    </div>
+    <div class="card">
+      <div class="label">Bugs encontrados al switch</div>
+      <div class="value">3</div>
+      <div class="sub">todos latentes en both; bloqueantes en platform</div>
+    </div>
+  </div>
+
+  <!-- ARQUITECTURA -->
+  <h2>Qué hace el sistema después de F7 (estado final)</h2>
+
+  <div class="arch-diagram">
+    <span class="dim">┌────────── Video Crack (consumidor real · 100 % plataforma) ──────────┐</span><br>
+    │  <span class="hl">TRANSCRIBE_MODE=platform</span> · <span class="hl">TRANSLATE_MODE=platform</span> · <span class="hl">TTS_MODE=platform</span>  │<br>
+    │  TTS se dispara manualmente ("Doblar audio") — no auto-chain        │<br>
+    │  <span class="hl2">create_job(service, workflow_id=vid_id)</span> → <span class="hl2">wait()</span> → resultado        │<br>
+    <span class="dim">└─────────────────────────────────────────────────────────────────────┘</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">│  X-App-Key</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">↓</span><br>
+    <span class="dim">┌──────────────────────── VPS 100.106.192.45 ─────────────────────────┐</span><br>
+    │  <span class="hl">API Go</span> :8081 · ledger VRAM <span class="hl2">vram_total_mb=15946</span>                  │<br>
+    │  serviceRequirements: <span class="hl3">transcription 5500</span> · <span class="hl3">translation 5300</span> · <span class="hl4">tts 14720</span>  │<br>
+    │  registro: 409 si segundo worker declara vram_total_mb distinto     │<br>
+    <span class="dim">└─────────────────────────────────────────────────────────────────────┘</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">│  Tailscale · SKIP LOCKED + reserva atómica</span><br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">↓</span><br>
+    <span class="dim">┌──────── ialab 100.103.55.110 · RTX 4070 Ti SUPER (15946 MiB) ────────┐</span><br>
+    │  <span class="hl">worker-whisper</span>  transcription  ~5060 MiB pico  ALLOW_HTTP_AUDIO=1  │<br>
+    │  <span class="hl">worker-ollama</span>   translation    ~4779 MiB pico  qwen2.5:7b          │<br>
+    │  <span class="hl4">worker-tts</span>      tts            ~14720 MiB pico Higgs Audio v3       │<br>
+    │  <span class="dim">TTS mutuamente excluyente con whisper+ollama (14720+5500 &gt; 15946)</span>    │<br>
+    │  <span class="dim">unload via docker stop (SGLang-Omni sin endpoint de flush)</span>          │<br>
+    <span class="dim">└─────────────────────────────────────────────────────────────────────┘</span>
+  </div>
+
+  <!-- TAREAS -->
+  <h2>Tareas implementadas <span style="font-size:0.75rem;color:#4a5568;font-weight:400;text-transform:none;letter-spacing:0;">(click para expandir)</span></h2>
+
+  <!-- T7.1 -->
+  <div class="task open">
+    <div class="task-header">
+      <div class="task-id">T7.1</div>
+      <div class="task-meta">
+        <div class="task-title">Validación de conflicto <code style="font-size:0.85em;color:#63b3ed;">vram_total_mb</code> en el registro de workers</div>
+        <div class="task-desc">Si un segundo worker declara un <code style="font-size:0.85em;">vram_total_mb</code> diferente para la misma GPU, la API retorna 409 — protege el ledger de corrupciones silenciosas que en F6 casi anulan toda la seguridad anti-OOM.</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo · API Go</span>
+          <span class="chip chip-time">3 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> en F6 el env del worker declaraba <code>24564</code> MiB para una GPU de 15946 — el <code>ON CONFLICT DO UPDATE</code> silencioso habría sobrescrito el techo y el ledger permitiría reservar 24 GB sobre 16. La solución: pre-check antes del UPSERT; si difiere, 409 antes de tocar la tabla.</p>
+
+      <div class="section-title">Archivos modificados</div>
+      <ul class="file-list">
+        <li><span class="file-name">api/internal/workers/store.go</span><span class="file-desc">— <code>ErrVRAMConflict</code> struct; <code>Register()</code>: <code>SELECT vram_total_mb FROM gpus WHERE id = $1</code> antes del UPSERT; <code>ON CONFLICT DO UPDATE SET hostname = EXCLUDED.hostname</code> (ya no actualiza <code>vram_total_mb</code>).</span></li>
+        <li><span class="file-name">api/internal/workers/handler.go</span><span class="file-desc">— <code>errors.As(err, &amp;vramErr)</code> → 409 con mensaje que incluye <code>gpu_id</code>, MiB del ledger y MiB declarados.</span></li>
+        <li><span class="file-name">api/integration_test.go</span><span class="file-desc">— <code>TestWorkerRegister_VRAMConflict_Rejected</code>: registra con 15946, verifica que 24564 → 409, ledger no corrompido, re-registro con mismo valor es idempotente.</span></li>
+      </ul>
+
+      <div class="decision">
+        <strong>Pre-check + UPSERT en dos pasos, no un UPSERT condicional</strong>
+        <p>Una sola sentencia SQL <code>INSERT … ON CONFLICT DO UPDATE WHERE EXCLUDED.vram = existing.vram</code> no retorna ninguna fila si el conflicto falla la condición — no distingue "conflicto de vram" de "key no existe". El pre-check hace el flujo legible y el error explícito sin magia SQL.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T7.2 -->
+  <div class="task">
+    <div class="task-header">
+      <div class="task-id">T7.2</div>
+      <div class="task-meta">
+        <div class="task-title">Timebox de motor TTS: elegir + medir VRAM real</div>
+        <div class="task-desc">Timebox de 2 días para elegir motor TTS y medir su VRAM real antes de escribir el worker. Resultado: Higgs Audio v3 (<code style="font-size:0.85em;color:#63b3ed;">bosonai/higgs-audio-v3-tts-4b</code>) vía SGLang-Omni. VRAM pico real: <strong>14720 MiB</strong> (teórico era 2000 MiB).</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo · Spike</span>
+          <span class="chip chip-time">4 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> riesgo R5 del backlog — la VRAM teórica de TTS estaba 12720 MiB por debajo de la real. Sin la medición el ledger habría aprobado tres modelos simultáneos en una GPU que no los cabe.</p>
+
+      <div class="section-title">Archivos creados</div>
+      <ul class="file-list">
+        <li><span class="file-name">deploy/ialab/timebox-tts.sh</span> <span class="file-new">NEW</span><span class="file-desc">— Script de medición: arranca el container de Higgs, envía audio de prueba, registra VRAM antes/después con <code>nvidia-smi</code>.</span></li>
+        <li><span class="file-name">docs/RUNBOOKS/t7.2-tts-timebox.md</span> <span class="file-new">NEW</span><span class="file-desc">— Candidatos evaluados, resultados (VRAM pico, latencia, calidad de audio), tabla de decisión y conclusión: Higgs v3 elegido.</span></li>
+      </ul>
+
+      <div class="section-title">Resultados reales (ialab)</div>
+      <table>
+        <tr><th>Métrica</th><th>Valor</th></tr>
+        <tr><td>Motor</td><td>SGLang-Omni · Higgs Audio v3 (<code>bosonai/higgs-audio-v3-tts-4b</code>)</td></tr>
+        <tr><td>Container pinneado</td><td><code>aibum-higgs-tts:latest @ ccbf6652d973</code></td></tr>
+        <tr><td>VRAM pico real</td><td><strong>14720 MiB</strong> (teórico: 2000 — factor 7×)</td></tr>
+        <tr><td>Consecuencia</td><td class="partial">TTS mutuamente excluyente con whisper+ollama (14720+5500 &gt; 15946)</td></tr>
+        <tr><td>Calidad</td><td class="pass">Verificada por escucha manual — aceptable</td></tr>
+      </table>
+
+      <div class="decision">
+        <strong>La exclusión mutua emergió de la física, no del diseño</strong>
+        <p>El plan original esperaba tres modelos simultáneos. La medición real reveló que TTS solo puede correr solo. El ledger implementa la exclusión mutua automáticamente: un job de TTS requiere 14720 MiB y el ledger bloquea cualquier otro claim hasta que se libere. Sin calibración este hallazgo habría sido un OOM en producción.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T7.3 -->
+  <div class="task">
+    <div class="task-header">
+      <div class="task-id">T7.3</div>
+      <div class="task-meta">
+        <div class="task-title">Guarda de Dockerfile en <code style="font-size:0.85em;color:#63b3ed;">deploy-workers.sh</code></div>
+        <div class="task-desc">Abortar con error claro si el worker que se quiere deployar no tiene su <code style="font-size:0.85em;">Dockerfile</code> esperado. Cierra el R7 del backlog — en F6 el Dockerfile faltante de worker-ollama se descubrió en el deploy.</div>
+        <div class="task-chips">
+          <span class="chip chip-devops">DevOps</span>
+          <span class="chip chip-time">1 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <div class="section-title">Archivos modificados</div>
+      <ul class="file-list">
+        <li><span class="file-name">deploy/ialab/deploy-workers.sh</span><span class="file-desc">— <code>declare -A WORKER_SERVICES</code> mapea <code>service → (Dockerfile, codedir)</code>; si falta el archivo, el script aborta con mensaje "Dockerfile not found: …" antes de construir nada.</span></li>
+      </ul>
+
+      <div class="decision">
+        <strong>Fallo rápido antes del build, no fallo lento durante el build</strong>
+        <p>Sin la guarda, <code>docker compose build</code> falla silenciosamente con un error de Docker que no menciona el worker ni da contexto. La guarda lleva el error al principio del script con un mensaje accionable.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T7.4 -->
+  <div class="task">
+    <div class="task-header">
+      <div class="task-id">T7.4</div>
+      <div class="task-meta">
+        <div class="task-title">worker-tts sobre el scaffold: sintetiza audio, sube archivo, unload via <code style="font-size:0.85em;color:#63b3ed;">docker stop</code></div>
+        <div class="task-desc">Tercer worker permanente. Reusa <code style="font-size:0.85em;">worker_base</code>; llama al endpoint HTTP de Higgs, sube el WAV al file-server, reporta <code style="font-size:0.85em;color:#b794f4;">job_files</code>. El idle-unload es <code style="font-size:0.85em;">docker stop</code> (no endpoint del motor — SGLang-Omni no tiene <code>/flush_cache</code>).</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo</span>
+          <span class="chip chip-time">5 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> tercer worker permanente con el mismo contrato que whisper y ollama. La dificultad única de TTS: el motor no expone API de shutdown, lo que obliga a un mecanismo de unload no estándar.</p>
+
+      <div class="section-title">Archivos creados</div>
+      <ul class="file-list">
+        <li><span class="file-name">workers/worker_tts/__main__.py</span> <span class="file-new">NEW</span><span class="file-desc">— Worker completo: <code>execute()</code> POST a Higgs, guarda WAV en volumen compartido, <code>upload_file_metadata()</code> al file-server; unload inmediato via Docker socket tras cada job.</span></li>
+      </ul>
+
+      <div class="section-title">Archivos modificados</div>
+      <ul class="file-list">
+        <li><span class="file-name">deploy/ialab/docker-compose.yml</span><span class="file-desc">— Servicio <code>worker-tts</code> con <code>/var/run/docker.sock</code> montado; env_file <code>worker-tts.env</code>; volumen compartido con el file-server.</span></li>
+        <li><span class="file-name">deploy/ialab/worker-tts.env.example</span> <span class="file-new">NEW</span><span class="file-desc">— Plantilla de env con <code>HIGGS_URL</code>, <code>MIN_VRAM_TTS_MB</code>, <code>WORKER_ID</code>.</span></li>
+        <li><span class="file-name">workers/pyproject.toml</span><span class="file-desc">— Script <code>worker-tts = "worker_tts:main"</code>.</span></li>
+      </ul>
+
+      <div class="decision">
+        <strong>docker stop como mecanismo de unload — decisión deliberada</strong>
+        <p>SGLang-Omni retorna 404 en <code>/flush_cache</code>. No existe API de shutdown del modelo. La única forma de liberar 14720 MiB es detener el container. El worker monta <code>/var/run/docker.sock</code> y llama <code>docker stop ialab-higgs-tts-1</code> inmediatamente tras cada job — sin idle timeout (no tiene sentido con un modelo que ocupa toda la VRAM útil). Esto le da privilegios de Docker al container, decisión de seguridad consciente documentada.</p>
+      </div>
+      <div class="decision">
+        <strong>Unload inmediato, no idle timeout</strong>
+        <p>Con whisper (idle 300s) y ollama (idle 600s), mantener el modelo caliente acelera el segundo job. Con TTS ocupa 14720 MiB — mantenerlo caliente bloquea cualquier otro modelo. El unload tras cada job es la política correcta aunque el segundo job tarde un poco más.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T7.5 -->
+  <div class="task">
+    <div class="task-header">
+      <div class="task-id">T7.5</div>
+      <div class="task-meta">
+        <div class="task-title">Tests de worker-tts (motor mockeado, sin GPU)</div>
+        <div class="task-desc">17 tests parcheando el cliente HTTP de Higgs y el Docker socket. Cubren el ciclo completo de execute, el unload, y los errores.</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo · Tests</span>
+          <span class="chip chip-time">3 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <div class="section-title">Archivos creados</div>
+      <ul class="file-list">
+        <li><span class="file-name">workers/tests/test_tts_execute.py</span> <span class="file-new">NEW</span><span class="file-desc">— 17 tests.</span></li>
+      </ul>
+
+      <div class="section-title">Cobertura (17 tests)</div>
+      <ul class="test-list">
+        <li>Execute exitoso: POST a Higgs, WAV guardado, metadata subida, progreso 10→100</li>
+        <li>Unload via docker stop tras cada job (éxito y excepción)</li>
+        <li>Errores: texto ausente, Higgs timeout, respuesta no-200</li>
+        <li>Payload: idioma por defecto (es), idioma explícito (en)</li>
+        <li>Unload no falla si el container ya no existe</li>
+        <li>Integración con <code>worker_base</code>: fencing 409, heartbeat, graceful shutdown</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- T7.6 -->
+  <div class="task">
+    <div class="task-header">
+      <div class="task-id">T7.6</div>
+      <div class="task-meta">
+        <div class="task-title">Calibrar <code style="font-size:0.85em;color:#63b3ed;">min_vram_mb</code> real de TTS en el ledger de la API</div>
+        <div class="task-desc">Fijar <code style="font-size:0.85em;">serviceRequirements["tts"] = 14720</code> con override <code style="font-size:0.85em;color:#63b3ed;">MIN_VRAM_TTS_MB</code> — mismo patrón que T4.9 (whisper) y T6.6 (translation).</div>
+        <div class="task-chips">
+          <span class="chip chip-devops">DevOps · API Go</span>
+          <span class="chip chip-time">1 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <div class="section-title">Archivos modificados</div>
+      <ul class="file-list">
+        <li><span class="file-name">api/internal/jobs/handler.go</span><span class="file-desc">— <code>serviceRequirements["tts"] = 14720</code>; <code>init()</code> agrega <code>MIN_VRAM_TTS_MB</code> (override sin redeploy de código).</span></li>
+      </ul>
+
+      <div class="decision">
+        <strong>Sin margen adicional — 14720 ya es el pico medido</strong>
+        <p>Whisper (+440 MiB) y ollama (+521 MiB) tenían margen porque el pico era interno. Con TTS el pico de 14720 es el límite real de la GPU: añadir margen excluiría a TTS de schedulear aunque cupiese físicamente. El ledger bloquea por el conteo exacto.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T7.7 -->
+  <div class="task">
+    <div class="task-header">
+      <div class="task-id">T7.7</div>
+      <div class="task-meta">
+        <div class="task-title">Video Crack adopta TTS detrás de flag (<code style="font-size:0.85em;color:#63b3ed;">TTS_MODE</code>)</div>
+        <div class="task-desc">Mismo patrón de F4.5/F6. El TTS se activa con el botón "Doblar audio" — no se encadena automáticamente después de la traducción. <code style="font-size:0.85em;">create_job("tts") → wait() → download archivo WAV.</code></div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo · Video Crack</span>
+          <span class="chip chip-time">3 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> tercer y último servicio de Video Crack en la plataforma. TTS consume el audio generado y descarga el WAV para que el frontend pueda reproducirlo.</p>
+
+      <div class="section-title">Archivos modificados</div>
+      <ul class="file-list">
+        <li><span class="file-name">video-crack/backend/routers/tradu.py</span><span class="file-desc">— <code>TTS_MODE</code> (default <code>legacy</code>), <code>_run_dub_via_platform()</code>, endpoint <code>POST /tradu/jobs/{id}/dub</code>. En <code>platform</code> llama a <code>create_job("tts")</code>, espera, descarga el WAV via <code>download_file()</code>.</span></li>
+      </ul>
+
+      <div class="decision">
+        <strong>TTS siempre manual — no auto-chain después de traducción</strong>
+        <p>La primera implementación (T7.10 en el contexto del sprint) encadenaba TTS automáticamente en <code>_process()</code> después de la traducción. Durante la validación el usuario rechazó este comportamiento: "solo se debería hacer al doblar audio, es un botón". El auto-chain fue removido; TTS es siempre una acción explícita del usuario.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T7.8 -->
+  <div class="task">
+    <div class="task-header">
+      <div class="task-id">T7.8</div>
+      <div class="task-meta">
+        <div class="task-title">Comparador de audio: sanity automático + protocolo de escucha manual</div>
+        <div class="task-desc">Riesgo R12 del backlog: el comparador de audio es imposible de automatizar con métricas objetivas (los dos sistemas TTS no producen audio comparable por señal). Solución: sanity de duración + SNR para detectar silencio/corrupción; veredicto final por escucha manual.</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo · Video Crack</span>
+          <span class="chip chip-time">3 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> necesitamos evidencia de calidad antes del switch, pero dos motores TTS diferentes producen voces distintas — ninguna métrica de señal puede comparar calidad subjetiva. El sanity comprueba que el audio no está corrupto o vacío; el protocolo documenta la escucha manual como paso formal.</p>
+
+      <div class="section-title">Archivos creados</div>
+      <ul class="file-list">
+        <li><span class="file-name">video-crack/scripts/sanity_tts.py</span> <span class="file-new">NEW</span><span class="file-desc">— Verifica duración vs. texto esperado (±30%), SNR mínimo (no silencio), formato WAV correcto.</span></li>
+        <li><span class="file-name">docs/RUNBOOKS/e2e-f7-results.md</span> <span class="file-new">NEW</span><span class="file-desc">— Protocolo de escucha manual documentado como criterio de aceptación; tabla de resultados de T7.11–T7.13 rellenada.</span></li>
+      </ul>
+
+      <div class="decision">
+        <strong>R12 confirmado — escucha manual es el veredicto correcto</strong>
+        <p>WER (Word Error Rate) y métricas de señal miden fidelidad del reconocimiento o ruido, no naturalidad de voz. La escucha manual fue el veredicto: "ya lo escuché, se escucha bien." Documentado como protocolo para que el criterio sea reproducible en fases posteriores.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T7.9 -->
+  <div class="task">
+    <div class="task-header">
+      <div class="task-id">T7.9</div>
+      <div class="task-meta">
+        <div class="task-title">SDK: <code style="font-size:0.85em;color:#63b3ed;">workflow_id</code> en <code style="font-size:0.85em;color:#63b3ed;">create_job()</code></div>
+        <div class="task-desc">Permite agrupar los tres jobs de un mismo video (transcripción, traducción, TTS) bajo un <code style="font-size:0.85em;">workflow_id</code> común para trazabilidad en el dashboard y futura orquestación.</div>
+        <div class="task-chips">
+          <span class="chip chip-dev">Desarrollo · SDK</span>
+          <span class="chip chip-time">1 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <div class="section-title">Archivos modificados</div>
+      <ul class="file-list">
+        <li><span class="file-name">client/ai_platform_client/client.py</span><span class="file-desc">— <code>workflow_id: str | None = None</code> en <code>create_job()</code>; incluido en el body del POST cuando no es <code>None</code>.</span></li>
+      </ul>
+
+      <div class="decision">
+        <strong>Param opcional con valor None — sin breaking change</strong>
+        <p>Video Crack pasa el <code>video_id</code> como <code>workflow_id</code> para los tres jobs del mismo video. Si el caller no lo pasa, el campo no se incluye en el body — la API ya acepta <code>workflow_id</code> desde F1 (campo en el schema). Cambio mínimo sin versionar el SDK.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- T7.10 -->
+  <div class="task">
+    <div class="task-header">
+      <div class="task-id">T7.10</div>
+      <div class="task-meta">
+        <div class="task-title">E2E de exclusión mutua TTS vs. whisper/ollama en el ledger</div>
+        <div class="task-desc">Verificación en hardware de que el ledger bloquea un job de TTS mientras whisper o ollama tienen reserva, y viceversa. Primer test real de la propiedad emergente descubierta en el timebox.</div>
+        <div class="task-chips">
+          <span class="chip chip-devops">DevOps · E2E</span>
+          <span class="chip chip-time">3 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <div class="section-title">Resultados reales (ialab)</div>
+      <table>
+        <tr><th>Criterio</th><th>Estado</th><th>Evidencia</th></tr>
+        <tr><td>TTS job claim bloqueado mientras whisper tiene reserva</td><td class="pass">✅</td><td>job TTS queda <code>pending</code> hasta unload de whisper</td></tr>
+        <tr><td>TTS reserva 14720 MiB en el ledger</td><td class="pass">✅</td><td><code>vram_reserved_mb=14720</code> durante el job</td></tr>
+        <tr><td>Unload via docker stop libera el ledger</td><td class="pass">✅</td><td><code>reserved_mb=0</code> tras el stop, siguiente job claimable</td></tr>
+        <tr><td>Recovery mid-job (docker stop durante TTS)</td><td class="pass">✅</td><td>running→pending en &lt;70s, re-claimado y completado</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- T7.11 -->
+  <div class="task">
+    <div class="task-header">
+      <div class="task-id">T7.11</div>
+      <div class="task-meta">
+        <div class="task-title">Corrida de producción: Video Crack TTS con <code style="font-size:0.85em;color:#63b3ed;">TTS_MODE=platform</code></div>
+        <div class="task-desc">Video Crack envía un job TTS real desde la UI ("Doblar audio"). Job completado en producción con texto real de Video Crack (209 palabras), audio WAV descargado.</div>
+        <div class="task-chips">
+          <span class="chip chip-devops">DevOps · Producción</span>
+          <span class="chip chip-time">3 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <div class="section-title">Resultado real</div>
+      <table>
+        <tr><th>Métrica</th><th>Valor</th></tr>
+        <tr><td>Job ID</td><td><code>735fbd1f</code></td></tr>
+        <tr><td>Texto de entrada</td><td>209 palabras</td></tr>
+        <tr><td>Audio generado</td><td>~36 segundos</td></tr>
+        <tr><td>Duración total del job</td><td>76 segundos</td></tr>
+        <tr><td>VRAM peak</td><td>14466 MiB (ledger reservó 14720)</td></tr>
+        <tr><td>Veredicto de audio</td><td class="pass">PASS — escucha manual aprobada ("ya lo escuché, se escucha bien")</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- T7.12 -->
+  <div class="task">
+    <div class="task-header">
+      <div class="task-id">T7.12</div>
+      <div class="task-meta">
+        <div class="task-title">Verificación de producción en <code style="font-size:0.85em;color:#63b3ed;">TTS_MODE=platform</code> con contenido real de Video Crack</div>
+        <div class="task-desc">Criterio 1 de cierre de fase: job real con contenido de producción, audio verificado por escucha, recovery confirmado. Changelog y backlog actualizados con evidencia.</div>
+        <div class="task-chips">
+          <span class="chip chip-devops">DevOps · Producción</span>
+          <span class="chip chip-time">2 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> el changelog tenía las secciones de T7.11 y T7.12 como "pendiente" aunque el código ya existía como diff no commiteado. T7.12 cierra el ciclo: actualiza changelog con resultados reales y commitea todo el código de T7.1–T7.10 que estaba sin commitear.</p>
+
+      <div class="section-title">Resultado del criterio de fase</div>
+      <table>
+        <tr><th>Criterio</th><th>Estado</th></tr>
+        <tr><td>Job real con texto VC 209 palabras, audio 36s, done en 76s</td><td class="pass">✅ job <code>735fbd1f</code></td></tr>
+        <tr><td>Escucha manual PASS</td><td class="pass">✅ verificado</td></tr>
+        <tr><td>Recovery: docker stop durante TTS → re-claim y done</td><td class="pass">✅ &lt;70s</td></tr>
+        <tr><td>Changelog y backlog actualizados con evidencia real</td><td class="pass">✅</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- T7.13 -->
+  <div class="task">
+    <div class="task-header">
+      <div class="task-id">T7.13 🏁</div>
+      <div class="task-meta">
+        <div class="task-title">Switch definitivo a <code style="font-size:0.85em;color:#63b3ed;">platform</code> + apagado del sistema viejo</div>
+        <div class="task-desc">Los tres flags de Video Crack cambian a <code style="font-size:0.85em;">platform</code>. LM Studio apagado. <code style="font-size:0.85em;">higgs-tradu</code> nunca existió como container. Tres bugs latentes emergieron al hacer el switch.</div>
+        <div class="task-chips">
+          <span class="chip chip-devops">DevOps · Producción</span>
+          <span class="chip chip-time">4 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-21</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <p><strong>El problema que resuelve:</strong> el criterio final del MVP. En F4.5 se estableció que los flags se apagarían cuando el pipeline completo estuviese verificado en producción. F7 es ese momento.</p>
+
+      <div class="section-title">Estado de los flags (2026-06-21)</div>
+      <table>
+        <tr><th>Flag</th><th>Antes</th><th>Después</th></tr>
+        <tr><td><code>TRANSCRIBE_MODE</code></td><td class="partial">both</td><td class="pass">platform</td></tr>
+        <tr><td><code>TRANSLATE_MODE</code></td><td class="partial">both</td><td class="pass">platform</td></tr>
+        <tr><td><code>TTS_MODE</code></td><td class="partial">legacy</td><td class="pass">platform</td></tr>
+        <tr><td>LM Studio</td><td class="partial">corriendo</td><td class="pass">apagado</td></tr>
+        <tr><td>higgs-tradu container</td><td class="partial">N/A (nunca existió)</td><td class="pass">N/A</td></tr>
+      </table>
+
+      <div class="bug">
+        <strong>Bug 1 — SSRF bloqueaba audio en loopback</strong>
+        <p>Worker-whisper tiene una política SSRF que bloquea (1) esquema <code>http://</code> y (2) rango <code>100.64.0.0/10</code> (Tailscale). Video Crack sirve los archivos de audio en <code>http://127.0.0.1:8000</code> — bloqueado por el primer criterio. Fix: <code>ALLOW_HTTP_AUDIO=1</code> en <code>~/.config/ai-platform/worker-whisper.env</code> + <code>--force-recreate</code>.</p>
+      </div>
+      <div class="bug">
+        <strong>Bug 2 — Parseo del resultado de traducción fallaba con dict</strong>
+        <p><code>result.get("result")</code> devuelve un dict <code>{"result": "1. texto..."}</code>, no un string. En <code>both</code> mode este path nunca se usaba para construir subtítulos primarios. Fix: <code>isinstance(job_result, dict)</code> antes del <code>.strip()</code>.</p>
+      </div>
+      <div class="bug">
+        <strong>Bug 3 — TTS se encadenaba automáticamente después de traducción</strong>
+        <p>La implementación inicial de T7.7 llamaba a <code>_run_dub()</code> automáticamente en <code>_process()</code> cuando <code>TTS_MODE=platform</code>. El usuario esperaba que TTS solo corriera al presionar "Doblar audio". Fix: bloque auto-chain eliminado de <code>_process()</code>.</p>
+      </div>
+
+      <p><strong>Todos los bugs eran latentes en <code>both</code> mode</strong> — el modo de validación oculta sistemáticamente los defectos de integración hasta que se hace el switch definitivo. Esta es la observación más importante de la fase.</p>
+    </div>
+  </div>
+
+  <!-- T7.14 -->
+  <div class="task">
+    <div class="task-header">
+      <div class="task-id">T7.14</div>
+      <div class="task-meta">
+        <div class="task-title">Cierre de fase + documentación (MVP completo + semántica por-job en DESIGN)</div>
+        <div class="task-desc"><code style="font-size:0.85em;">PROJECT.md</code> marca MVP completo. <code style="font-size:0.85em;">CLAUDE.md</code> postura de producción F7. <code style="font-size:0.85em;">DESIGN.md</code> documenta la semántica por-job del ledger. Retrospectiva escrita.</div>
+        <div class="task-chips">
+          <span class="chip chip-doc">Documentación</span>
+          <span class="chip chip-time">2 h</span>
+        </div>
+      </div>
+      <div class="task-status">✅ 2026-06-21</div>
+      <div class="task-toggle">▼</div>
+    </div>
+    <div class="task-body">
+      <div class="section-title">Archivos modificados</div>
+      <ul class="file-list">
+        <li><span class="file-name">PROJECT.md</span><span class="file-desc">— "🏁 MVP completo — F0–F7 cerradas"; tabla de fases completa; footnote ⁷ con resumen de resultados; "Próximos pasos" actualizado a post-MVP (F9–F11).</span></li>
+        <li><span class="file-name">CLAUDE.md</span><span class="file-desc">— Sección "Fase activa" actualizada: F7 ✅ MVP cumplido; postura de producción con los tres workers, modos de Video Crack, <code>ALLOW_HTTP_AUDIO=1</code> y exclusión mutua TTS.</span></li>
+        <li><span class="file-name">DESIGN.md</span><span class="file-desc">— Párrafo "Semántica por-job del ledger" en §Reserva de VRAM: documenta que la reserva se ata al ciclo de vida del job (no del modelo), y el diagnóstico de deriva <code>vram_reserved_mb=0</code> con modelo caliente.</span></li>
+        <li><span class="file-name">docs/BACKLOG/f7.md</span><span class="file-desc">— Criterios de T7.14 marcados <code>[x]</code>.</span></li>
+        <li><span class="file-name">docs/CHANGELOG/f7.md</span><span class="file-desc">— Hallazgos de T7.13 documentados: SSRF, bug de parseo, auto-chain.</span></li>
+        <li><span class="file-name">docs/RETROSPECTIVES/f7.md</span> <span class="file-new">NEW</span><span class="file-desc">— Retrospectiva completa: 6 preguntas, tabla de riesgos materializados, deuda técnica identificada.</span></li>
+      </ul>
+
+      <div class="decision">
+        <strong>Semántica por-job del ledger — decisión documentada retroactivamente</strong>
+        <p>La reserva de VRAM se ata al ciclo de vida del job, no del modelo cargado. Un modelo caliente entre jobs mantiene su reserva en el ledger. Esto es correcto y deliberado, pero no estaba documentado en DESIGN.md. T7.14 lo formaliza para que futuros lectores entiendan por qué <code>vram_reserved_mb=0</code> con un modelo caliente es una deriva de diagnóstico, no el estado normal.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- RETROSPECTIVA -->
+  <h2>Retrospectiva — aprendizajes clave</h2>
+
+  <div class="retro-grid">
+    <div class="retro-card">
+      <h3 class="good">Lo que funcionó bien</h3>
+      <ul>
+        <li>Calibrar VRAM en el timebox (T7.2) antes de escribir el worker: 2000 → 14720 MiB; sin medición → OOM en producción</li>
+        <li>El ledger implementó exclusión mutua automáticamente sin código especial: es una propiedad emergente de la física</li>
+        <li>El patrón de tres flags (legacy/platform/both) absorbió todos los bugs de integración antes del switch sin afectar producción</li>
+        <li>Escucha manual como criterio formal de calidad de audio — pragmático y no falsificable con métricas de señal</li>
+      </ul>
+    </div>
+    <div class="retro-card">
+      <h3 class="lesson">Lo que aprendimos del sistema real</h3>
+      <ul>
+        <li><code>both</code> mode oculta sistemáticamente los bugs de integración — todos los defectos de T7.13 eran invisibles en <code>both</code></li>
+        <li>SGLang-Omni no tiene <code>/flush_cache</code>: <code>docker stop</code> es el único mecanismo de unload — docker.sock como dependencia explícita</li>
+        <li><code>ALLOW_HTTP_AUDIO=1</code> necesario cuando cliente y worker comparten el mismo nodo (loopback + SSRF policy)</li>
+        <li>El contrato de <code>client.wait()</code> devuelve un dict en <code>result</code>, no un string — no estaba documentado</li>
+      </ul>
+    </div>
+    <div class="retro-card">
+      <h3 class="risk">Lo que más sorprendió</h3>
+      <ul>
+        <li>El valor teórico de VRAM de TTS (2000) estaba 7× por debajo del real (14720) — la calibración empírica es mandatoria</li>
+        <li>Tres bugs de video-crack latentes durante meses solo se volvieron visibles en el switch a <code>platform</code> — el flip reveló la deuda de integración acumulada</li>
+        <li>El proceso viejo de uvicorn seguía vivo con <code>TRANSCRIBE_MODE=both</code> mientras el archivo ya decía <code>platform</code> — verificar el env del proceso, no del archivo</li>
+        <li>El job japonés fue el primero que ejercitó el nuevo path de parseo de traducción — reveló el bug que todos los otros videos habían enmascarado</li>
+      </ul>
+    </div>
+    <div class="retro-card">
+      <h3 class="risk">Postura de producción al cerrar F7</h3>
+      <ul>
+        <li>Video Crack: <code>TRANSCRIBE_MODE=platform</code>, <code>TRANSLATE_MODE=platform</code>, <code>TTS_MODE=platform</code></li>
+        <li>worker-whisper: <code>ALLOW_HTTP_AUDIO=1</code> activo (audio por loopback)</li>
+        <li>worker-tts: Higgs v3 <code>@ ccbf6652d973</code>, unload inmediato via docker stop</li>
+        <li>TTS mutuamente excluyente con whisper+ollama — ledger enforza sin código especial</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ESTADO FINAL MVP -->
+  <h2>Estado final del MVP</h2>
+
+  <table>
+    <tr>
+      <th>Fase</th>
+      <th>Entregable</th>
+      <th>Estado</th>
+    </tr>
+    <tr><td>F0–F2</td><td>Infra VPS + API Go + Node Agent + schema PostgreSQL</td><td class="pass">✅</td></tr>
+    <tr><td>F3</td><td>Scaffold worker_base Python</td><td class="pass">✅</td></tr>
+    <tr><td>F4</td><td>worker-whisper (transcripción, faster-whisper large-v2)</td><td class="pass">✅</td></tr>
+    <tr><td>F4.5</td><td>SDK mínimo + Video Crack transcribe via plataforma</td><td class="pass">✅</td></tr>
+    <tr><td>F5</td><td>Dashboard React: workers + jobs, cancelar/reintentar</td><td class="pass">✅</td></tr>
+    <tr><td>F6</td><td>worker-ollama (traducción, qwen2.5:7b) + Video Crack traduce</td><td class="pass">✅</td></tr>
+    <tr><td>F7</td><td>worker-tts (Higgs v3) + Video Crack TTS + sistema viejo apagado</td><td class="pass">✅ 🏁</td></tr>
+  </table>
+
+  <div style="background:#1a3535;border:1px solid #276749;border-radius:10px;padding:1.4rem 1.6rem;margin-top:1.5rem;">
+    <p style="font-size:0.85rem;color:#a0aec0;"><strong style="color:#68d391;">Deuda técnica post-MVP (F9–F11):</strong> script de arranque del backend con .env.platform (systemd), documentar decisión de docker.sock en DESIGN.md, contrato escrito del formato de <code>result</code> en <code>client.wait()</code>, <code>concurrency: 2</code> para TTS si el throughput se vuelve cuello de botella.</p>
+  </div>
+
+</div>
+
+<div class="footer">
+  Generado el 2026-06-21 &mdash; AI Worker Platform feature/f7 &mdash; docs/HTML/f7-implementacion.html
+</div>
+
+<script>
+  document.querySelectorAll('.task-header').forEach(header => {
+    header.addEventListener('click', (e) => {
+      e.stopPropagation();
+      header.closest('.task').classList.toggle('open');
+    });
+  });
+  document.querySelectorAll('.task-body').forEach(body => {
+    body.addEventListener('click', (e) => e.stopPropagation());
+  });
+</script>
+
+</body>
+</html>
